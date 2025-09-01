@@ -74,8 +74,9 @@
         <a href="{% url 'clientes:list' %}"><i class="fa-solid fa-users"></i> Clientes</a>
         <a href="#"><i class="fa-solid fa-wallet"></i> Financeiro</a>
         <a href="#"><i class="fa-solid fa-briefcase"></i> Serviços</a>
-        <a href="#"><i class="fa-solid fa-chalkboard-teacher"></i> Professores</a>
-        <a href="#"><i class="fa-solid fa-building"></i> Condomínios</a>
+        <a href="{% url 'modalidades:list' %}"><i class="fa-solid fa-dumbbell"></i> Modalidades</a>
+        <a href="{% url 'funcionarios:list' %}"><i class="fa-solid fa-chalkboard-teacher"></i>Funcionarios</a>
+        <a href="{% url 'condominios:list' %}"><i class="fa-solid fa-building"></i> Condomínios</a>
         <a href="#"><i class="fa-solid fa-layer-group"></i> Turmas</a>
         <a href="#"><i class="fa-solid fa-cog"></i> Parâmetros</a>
     </div>

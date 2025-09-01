@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Condomínios | MCA{% endblock %}
+
+{% block content %}
+
+<!-- Mensagens -->
+{% if messages %}
+  <div class="mb-3">
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }} mb-2">{{ message }}</div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<!-- Filtros -->
+<form method="get" class="card card-body mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label">Busca (nome, e-mail, CNPJ)</label>
+      <input type="text" name="q" value="{{ filtro_form.initial.q }}" class="form-control" placeholder="Digite para buscar...">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Cidade</label>
+      <input type="text" name="cidade" value="{{ filtro_form.initial.cidade }}" class="form-control">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">UF</label>
+      <select name="uf" class="form-select">
+        <option value="">--</option>
+        {% for code, label in UF_CHOICES %}
+          <option value="{{ code }}" {% if code == uf %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Status</label>
+      <select name="ativos" class="form-select">
+        <option value=""  {% if ativos_param == "" %}selected{% endif %}>Todos</option>
+        <option value="1" {% if ativos_param == "1" %}selected{% endif %}>Ativos</option>
+        <option value="0" {% if ativos_param == "0" %}selected{% endif %}>Inativos</option>
+      </select>
+    </div>
+    <div class="col-md-1 d-grid">
+      <button class="btn btn-primary" type="submit">
+        <i class="fa-solid fa-magnifying-glass"></i> Filtrar
+      </button>
+    </div>
+  </div>
+</form>
+
+<!-- Ações -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="btn-group">
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#condModal" data-mode="create">
+      <i class="fa-solid fa-building-circle-check"></i> Novo Condomínio
+    </button>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-primary" href="{% url 'condominios:exportar' %}">
+      <i class="fa-solid fa-file-export"></i> Exportar Excel
+    </a>
+    <button class="btn btn-outline-dark" data-bs-toggle="modal" data-bs-target="#importModal">
+      <i class="fa-solid fa-file-import"></i> Importar Excel
+    </button>
+  </div>
+</div>
+
+<!-- Tabela -->
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Nome</th>
+          <th>Cidade</th>
+          <th>UF</th>
+          <th style="width: 90px;">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in page_obj.object_list %}
+        <tr>
+          <td>{{ c.nome }}</td>
+          <td>{{ c.municipio }}</td>
+          <td>{{ c.estado }}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#condModal"
+                    data-mode="edit"
+                    data-id="{{ c.id }}"
+                    data-cnpj="{{ c.cnpj }}"
+                    data-nome="{{ c.nome|escape }}"
+                    data-email="{{ c.email|default_if_none:'' }}"
+                    data-cep="{{ c.cep|default_if_none:'' }}"
+                    data-numero="{{ c.numero|default_if_none:'' }}"
+                    data-logradouro="{{ c.logradouro|default_if_none:''|escape }}"
+                    data-bairro="{{ c.bairro|default_if_none:''|escape }}"
+                    data-complemento="{{ c.complemento|default_if_none:''|escape }}"
+                    data-municipio="{{ c.municipio|default_if_none:''|escape }}"
+                    data-estado="{{ c.estado|default_if_none:'' }}"
+                    data-ativo="{{ c.ativo|yesno:'1,0' }}">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-center py-4">Nenhum condomínio encontrado.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Paginação -->
+  <div class="card-footer d-flex justify-content-between align-items-center">
+  <div>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</div>
+  <nav>
+    <ul class="pagination mb-0">
+      <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+        {% if page_obj.has_previous %}
+          <a class="page-link" href="?page=1{{ suffix }}" aria-label="Primeira">&laquo;</a>
+        {% else %}
+          <span class="page-link">&laquo;</span>
+        {% endif %}
+      </li>
+
+      <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+        {% if page_obj.has_previous %}
+          <a class="page-link" href="?page={{ page_obj.previous_page_number }}{{ suffix }}">Anterior</a>
+        {% else %}
+          <span class="page-link">Anterior</span>
+        {% endif %}
+      </li>
+
+      <li class="page-item active"><span class="page-link">{{ page_obj.number }}</span></li>
+
+      <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+        {% if page_obj.has_next %}
+          <a class="page-link" href="?page={{ page_obj.next_page_number }}{{ suffix }}">Próxima</a>
+        {% else %}
+          <span class="page-link">Próxima</span>
+        {% endif %}
+      </li>
+
+      <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+        {% if page_obj.has_next %}
+          <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{{ suffix }}" aria-label="Última">&raquo;</a>
+        {% else %}
+          <span class="page-link">&raquo;</span>
+        {% endif %}
+      </li>
+    </ul>
+  </nav>
+</div>
+
+<!-- Modal Cadastro/Edicão -->
+<div class="modal fade" id="condModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <form id="condForm" method="post" action="{% url 'condominios:create' %}">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title">Novo Condomínio</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">CNPJ</label>
+              <input name="cnpj" class="form-control" required>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label">Nome Completo</label>
+              <input name="nome" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">E-mail</label>
+              <input name="email" type="email" class="form-control">
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label">CEP</label>
+              <input name="cep" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Número</label>
+              <input name="numero" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Logradouro</label>
+              <input name="logradouro" class="form-control">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Bairro</label>
+              <input name="bairro" class="form-control">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Complemento</label>
+              <input name="complemento" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Município</label>
+              <input name="municipio" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Estado</label>
+              <select name="estado" class="form-select">
+                <option value="">--</option>
+                {% for code, label in UF_CHOICES %}
+                  <option value="{{ code }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-3 form-check mt-3">
+              <input class="form-check-input" type="checkbox" name="ativo" id="ativoCheck" checked>
+              <label class="form-check-label" for="ativoCheck">Ativo</label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Importar -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{% url 'condominios:importar' %}" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title">Importar Condomínios (Excel .xlsx)</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <input class="form-control" type="file" name="arquivo" accept=".xlsx" required>
+          </div>
+          <small class="text-muted">
+            Cabeçalhos mínimos: <code>cnpj</code>, <code>nome</code>.<br>
+            Demais campos: <code>email, cep, numero, logradouro, bairro, complemento, municipio/cidade, estado/uf, ativo</code>.
+          </small>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-dark" type="submit">Importar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Script modal (create/edit) -->
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const modal = document.getElementById('condModal');
+  const form = document.getElementById('condForm');
+  const title = modal.querySelector('.modal-title');
+
+  modal.addEventListener('show.bs.modal', function (event) {
+    const button = event.relatedTarget;
+    const mode = button.getAttribute('data-mode');
+
+    form.reset();
+    form.action = "{% url 'condominios:create' %}";
+    title.textContent = "Novo Condomínio";
+
+    if (mode === 'edit') {
+      title.textContent = "Editar Condomínio";
+      const id = button.getAttribute('data-id');
+      form.action = "{% url 'condominios:update' 0 %}".replace('/0/', '/' + id + '/');
+
+      const setVal = (name, value) => { const el = form.querySelector(`[name="${name}"]`); if (el) el.value = value || ''; }
+      setVal('cnpj',       button.getAttribute('data-cnpj'));
+      setVal('nome',       button.getAttribute('data-nome'));
+      setVal('email',      button.getAttribute('data-email'));
+      setVal('cep',        button.getAttribute('data-cep'));
+      setVal('numero',     button.getAttribute('data-numero'));
+      setVal('logradouro', button.getAttribute('data-logradouro'));
+      setVal('bairro',     button.getAttribute('data-bairro'));
+      setVal('complemento',button.getAttribute('data-complemento'));
+      setVal('municipio',  button.getAttribute('data-municipio'));
+      setVal('estado',     button.getAttribute('data-estado'));
+      form.querySelector('[name="ativo"]').checked = (button.getAttribute('data-ativo') === '1');
+    }
+  });
+});
+</script>
+
+{% endblock %}
