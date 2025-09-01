@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Turmas | MCA{% endblock %}
+
+{% block content %}
+
+{% if messages %}
+  <div class="mb-3">
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }} mb-2">{{ message }}</div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<form method="get" class="card card-body mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label">Busca (turma / modalidade / condomínio / professor)</label>
+      <input type="text" name="q" value="{{ filtro_form.initial.q }}" class="form-control" placeholder="Digite para buscar...">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Condomínio</label>
+      <select name="condominio" class="form-select">
+        <option value="">Todos</option>
+        {% for c in condominios %}
+          <option value="{{ c.id }}" {% if c.id|stringformat:"s" == condominio_id %}selected{% endif %}>{{ c.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Modalidade</label>
+      <select name="modalidade" class="form-select">
+        <option value="">Todas</option>
+        {% for m in modalidades %}
+          <option value="{{ m.id }}" {% if m.id|stringformat:"s" == modalidade_id %}selected{% endif %}>{{ m.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Professor</label>
+      <select name="professor" class="form-select">
+        <option value="">Todos</option>
+        {% for p in professores %}
+          <option value="{{ p.id }}" {% if p.id|stringformat:"s" == professor_id %}selected{% endif %}>{{ p.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-1">
+      <label class="form-label">Dia</label>
+      <select name="dia_semana" class="form-select">
+        <option value="">Todos</option>
+        {% for idx, label in DIAS_SEMANA %}
+          <option value="{{ idx }}" {% if dia_param|stringformat:"s" == idx|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-1">
+      <label class="form-label">Status</label>
+      <select name="ativos" class="form-select">
+        <option value=""  {% if ativos_param == "" %}selected{% endif %}>Todos</option>
+        <option value="1" {% if ativos_param == "1" %}selected{% endif %}>Ativas</option>
+        <option value="0" {% if ativos_param == "0" %}selected{% endif %}>Inativas</option>
+      </select>
+    </div>
+    <div class="col-md-1 d-grid">
+      <button class="btn btn-primary" type="submit">
+        <i class="fa-solid fa-magnifying-glass"></i> Filtrar
+      </button>
+    </div>
+  </div>
+</form>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="btn-group">
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#turmaModal" data-mode="create">
+      <i class="fa-solid fa-plus"></i> Nova Turma
+    </button>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-primary" href="{% url 'turmas:exportar' %}?{{ base_qs }}">
+      <i class="fa-solid fa-file-export"></i> Exportar Excel
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Modalidade</th>
+          <th>Condomínio</th>
+          <th>Professor</th>
+          <th>Dia/Hora</th>
+          <th>Cap.</th>
+          <th>Ocupação</th>
+          <th>Valor</th>
+          <th style="width: 200px;">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in page_obj.object_list %}
+        <tr>
+          <td>
+            {{ t.modalidade.nome }}
+            {% if t.nome_exibicao %}<br><small class="text-muted">{{ t.nome_exibicao }}</small>{% endif %}
+          </td>
+          <td>{{ t.condominio.nome }}</td>
+          <td>{{ t.professor.nome }}</td>
+          <td>{{ t.get_dia_semana_display }} {{ t.hora_inicio|time:"H:i" }}</td>
+          <td>{{ t.capacidade }}</td>
+          <td>
+            {% if t.ocupacao >= t.capacidade %}
+              <span class="badge text-bg-danger">{{ t.ocupacao }}/{{ t.capacidade }}</span>
+            {% else %}
+              <span class="badge text-bg-primary">{{ t.ocupacao }}/{{ t.capacidade }}</span>
+            {% endif %}
+          </td>
+          <td>R$ {{ t.valor }}</td>
+          <td class="d-flex gap-1">
+            <button class="btn btn-sm btn-outline-primary"
+                    title="Editar turma"
+                    data-bs-toggle="modal"
+                    data-bs-target="#turmaModal"
+                    data-mode="edit"
+                    data-id="{{ t.id }}"
+                    data-professor="{{ t.professor.id }}"
+                    data-modalidade="{{ t.modalidade.id }}"
+                    data-condominio="{{ t.condominio.id }}"
+                    data-nome_exibicao="{{ t.nome_exibicao|default_if_none:''|escape }}"
+                    data-valor="{{ t.valor }}"
+                    data-capacidade="{{ t.capacidade }}"
+                    data-dia_semana="{{ t.dia_semana }}"
+                    data-hora_inicio="{{ t.hora_inicio|time:'H:i' }}"
+                    data-duracao="{{ t.duracao_minutos }}"
+                    data-inicio_vigencia="{{ t.inicio_vigencia|date:'Y-m-d' }}"
+                    data-fim_vigencia="{{ t.fim_vigencia|date:'Y-m-d' }}"
+                    data-ativo="{{ t.ativo|yesno:'1,0' }}">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+
+            <button class="btn btn-sm btn-outline-success"
+                    title="Matricular cliente"
+                    data-bs-toggle="modal"
+                    data-bs-target="#matriculaModal"
+                    data-turma="{{ t.id }}">
+              <i class="fa-solid fa-user-plus"></i>
+            </button>
+
+            <a class="btn btn-sm btn-outline-secondary"
+               title="Ver alunos"
+               href="{% url 'turmas:alunos' t.id %}">
+              <i class="fa-solid fa-users"></i>
+            </a>
+
+            <a class="btn btn-sm btn-outline-dark"
+               title="Presenças"
+               href="{% url 'turmas:presencas_turma' turma_id=t.id %}">
+              <i class="fa-solid fa-clipboard-list"></i>
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="text-center py-4">Nenhuma turma encontrada.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card-footer d-flex justify-content-between align-items-center">
+    <div>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</div>
+    <nav>
+      <ul class="pagination mb-0">
+        <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+          {% if page_obj.has_previous %}
+            <a class="page-link" href="?page=1{{ suffix }}" aria-label="Primeira">&laquo;</a>
+          {% else %}<span class="page-link">&laquo;</span>{% endif %}
+        </li>
+        <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+          {% if page_obj.has_previous %}
+            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{{ suffix }}">Anterior</a>
+          {% else %}<span class="page-link">Anterior</span>{% endif %}
+        </li>
+        <li class="page-item active"><span class="page-link">{{ page_obj.number }}</span></li>
+        <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+          {% if page_obj.has_next %}
+            <a class="page-link" href="?page={{ page_obj.next_page_number }}{{ suffix }}">Próxima</a>
+          {% else %}<span class="page-link">Próxima</span>{% endif %}
+        </li>
+        <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+          {% if page_obj.has_next %}
+            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{{ suffix }}" aria-label="Última">&raquo;</a>
+          {% else %}<span class="page-link">&raquo;</span>{% endif %}
+        </li>
+      </ul>
+    </nav>
+  </div>
+</div>
+
+<!-- Modal Cadastro/Edição de Turma -->
+<div class="modal fade" id="turmaModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form id="turmaForm" method="post" action="{% url 'turmas:create' %}">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title">Nova Turma</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Professor</label>
+              <select name="professor" class="form-select" required>
+                <option value="">--</option>
+                {% for p in professores %}<option value="{{ p.id }}">{{ p.nome }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Modalidade</label>
+              <select name="modalidade" class="form-select" required>
+                <option value="">--</option>
+                {% for m in modalidades %}<option value="{{ m.id }}">{{ m.nome }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Condomínio</label>
+              <select name="condominio" class="form-select" required>
+                <option value="">--</option>
+                {% for c in condominios %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Nome (opcional)</label>
+              <input name="nome_exibicao" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Valor</label>
+              <input name="valor" type="number" step="0.01" min="0" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Capacidade</label>
+              <input name="capacidade" type="number" min="1" class="form-control" required>
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label">Dia da Semana</label>
+              <select name="dia_semana" class="form-select" required>
+                {% for idx, label in DIAS_SEMANA %}<option value="{{ idx }}">{{ label }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Hora Início</label>
+              <input name="hora_inicio" type="time" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Duração (min)</label>
+              <input name="duracao_minutos" type="number" min="1" class="form-control" value="60" required>
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label">Início Vigência</label>
+              <input name="inicio_vigencia" type="date" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Fim Vigência</label>
+              <input name="fim_vigencia" type="date" class="form-control">
+            </div>
+
+            <div class="col-md-3 form-check mt-4">
+              <input class="form-check-input" type="checkbox" name="ativo" id="ativoTurmaCheck" checked>
+              <label class="form-check-label" for="ativoTurmaCheck">Ativa</label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Matrícula -->
+<div class="modal fade" id="matriculaModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="matriculaForm" method="post" action="{% url 'turmas:matricular' %}">
+        {% csrf_token %}
+        <input type="hidden" name="turma_id" value="">
+        <div class="modal-header">
+          <h5 class="modal-title">Matricular Cliente</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Cliente (ativos)</label>
+            <select name="cliente" class="form-select" required>
+              <option value="">--</option>
+              {% for cli in clientes %}
+                <option value="{{ cli.id }}">{{ cli.nome_razao }} — {{ cli.cpf_cnpj }}</option>
+              {% endfor %}
+            </select>
+            <small class="text-muted">Mostrando até 500 clientes ativos.</small>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Data de início</label>
+            <input type="date" name="data_inicio" class="form-control">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-success" type="submit">Matricular</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const turmaModal = document.getElementById('turmaModal');
+  const turmaForm = document.getElementById('turmaForm');
+  const turmaTitle = turmaModal.querySelector('.modal-title');
+
+  turmaModal.addEventListener('show.bs.modal', function (event) {
+    const btn = event.relatedTarget;
+    const mode = btn.getAttribute('data-mode');
+
+    turmaForm.reset();
+    turmaForm.action = "{% url 'turmas:create' %}";
+    turmaTitle.textContent = "Nova Turma";
+
+    if (mode === 'edit') {
+      turmaTitle.textContent = "Editar Turma";
+      const id = btn.getAttribute('data-id');
+      turmaForm.action = "{% url 'turmas:update' 0 %}".replace('/0/', '/' + id + '/');
+
+      const setVal = (name, value) => { const el = turmaForm.querySelector(`[name="${name}"]`); if (el) el.value = value || ''; }
+      const setSel = (name, value) => { const el = turmaForm.querySelector(`[name="${name}"]`); if (el) el.value = value || ''; }
+
+      setSel('professor', btn.getAttribute('data-professor'));
+      setSel('modalidade', btn.getAttribute('data-modalidade'));
+      setSel('condominio', btn.getAttribute('data-condominio'));
+      setVal('nome_exibicao', btn.getAttribute('data-nome_exibicao'));
+      setVal('valor', btn.getAttribute('data-valor'));
+      setVal('capacidade', btn.getAttribute('data-capacidade'));
+      setSel('dia_semana', btn.getAttribute('data-dia_semana'));
+      setVal('hora_inicio', btn.getAttribute('data-hora_inicio'));
+      setVal('duracao_minutos', btn.getAttribute('data-duracao'));
+      setVal('inicio_vigencia', btn.getAttribute('data-inicio_vigencia'));
+      setVal('fim_vigencia', btn.getAttribute('data-fim_vigencia'));
+      turmaForm.querySelector('[name="ativo"]').checked = (btn.getAttribute('data-ativo') === '1');
+    }
+  });
+
+  const matriculaModal = document.getElementById('matriculaModal');
+  const matriculaForm = document.getElementById('matriculaForm');
+  matriculaModal.addEventListener('show.bs.modal', function (event) {
+    const btn = event.relatedTarget;
+    const turmaId = btn.getAttribute('data-turma');
+    const hidden = matriculaForm.querySelector('input[name="turma_id"]');
+    if (hidden) hidden.value = turmaId || "";
+  });
+});
+</script>
+
+{% endblock %}

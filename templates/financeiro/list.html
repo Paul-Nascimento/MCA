@@ -1,0 +1,503 @@
+{% extends "base.html" %}
+{% block title %}Financeiro | MCA{% endblock %}
+{% block content %}
+
+{% if messages %}
+  <div class="mb-3">{% for message in messages %}<div class="alert alert-{{ message.tags }} mb-2">{{ message }}</div>{% endfor %}</div>
+{% endif %}
+
+<form method="get" class="card card-body mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label">Busca</label>
+      <input name="q" value="{{ filtro_form.data.q }}" class="form-control" placeholder="Descrição, observação, contraparte...">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Tipo</label>
+      <select name="tipo" class="form-select">
+        <option value="">Todos</option>
+        <option value="RECEBER" {% if filtro_form.data.tipo == "RECEBER" %}selected{% endif %}>A Receber</option>
+        <option value="PAGAR" {% if filtro_form.data.tipo == "PAGAR" %}selected{% endif %}>A Pagar</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Status</label>
+      <select name="status" class="form-select">
+        <option value="" {% if not filtro_form.data.status %}selected{% endif %}>Todos</option>
+        <option value="ABERTO" {% if filtro_form.data.status == "ABERTO" %}selected{% endif %}>Aberto</option>
+        <option value="PARCIAL" {% if filtro_form.data.status == "PARCIAL" %}selected{% endif %}>Parcial</option>
+        <option value="LIQUIDADO" {% if filtro_form.data.status == "LIQUIDADO" %}selected{% endif %}>Liquidado</option>
+        <option value="CANCELADO" {% if filtro_form.data.status == "CANCELADO" %}selected{% endif %}>Cancelado</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Venc. de</label>
+      <input type="date" name="venc_de" value="{{ filtro_form.data.venc_de }}" class="form-control">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Venc. até</label>
+      <input type="date" name="venc_ate" value="{{ filtro_form.data.venc_ate }}" class="form-control">
+    </div>
+    <div class="col-md-1 d-grid">
+      <button class="btn btn-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> Filtrar</button>
+    </div>
+  </div>
+</form>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="btn-group">
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#lancamentoModal" data-mode="create">
+      <i class="fa-solid fa-plus"></i> Novo Lançamento
+    </button>
+    <button class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#recorrenciaModal">
+      <i class="fa-solid fa-bolt"></i> Recorrência
+    </button>
+  </div>
+  <a class="btn btn-outline-primary" href="{% url 'financeiro:exportar' %}?{{ base_qs }}"><i class="fa-solid fa-file-export"></i> Exportar Excel</a>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Tipo</th>
+          <th>Descrição</th>
+          <th>Vencimento</th>
+          <th>Valor</th>
+          <th>Baixado</th>
+          <th>Saldo</th>
+          <th>Status</th>
+          <th>Contraparte</th>
+          <th style="width: 180px;">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in page_obj.object_list %}
+        <tr>
+          <td>
+            {% if l.tipo == "RECEBER" %}<span class="badge text-bg-success">Receber</span>
+            {% else %}<span class="badge text-bg-warning text-dark">Pagar</span>{% endif %}
+          </td>
+          <td>{{ l.descricao }}{% if l.observacao %}<br><small class="text-muted">{{ l.observacao|truncatechars:80 }}</small>{% endif %}</td>
+          <td>
+            {{ l.vencimento|date:"d/m/Y" }}
+            {% if l.vencido %}<span class="badge text-bg-danger ms-1">Vencido</span>{% endif %}
+          </td>
+          <td>R$ {{ l.valor }}</td>
+          R$ {{ l.total_baixado_agg|default:l.total_baixado }}
+          <td><strong>R$ {{ l.saldo }}</strong></td>
+          <td>
+            <span class="badge text-bg-{% if l.status == 'LIQUIDADO' %}success{% elif l.status == 'PARCIAL' %}primary{% elif l.status == 'CANCELADO' %}secondary{% else %}warning text-dark{% endif %}">
+              {{ l.get_status_display }}
+            </span>
+          </td>
+          <td>
+            {% if l.cliente %}{{ l.cliente.nome_razao }}
+            {% elif l.funcionario %}{{ l.funcionario.nome }}
+            {% elif l.condominio %}{{ l.condominio.nome }}
+            {% elif l.turma %}{{ l.turma }}
+            {% else %}{{ l.contraparte_nome }}{% endif %}
+          </td>
+          <td class="d-flex gap-1">
+            <button class="btn btn-sm btn-outline-primary"
+                    data-bs-toggle="modal" data-bs-target="#lancamentoModal" data-mode="edit"
+                    data-id="{{ l.id }}" data-tipo="{{ l.tipo }}" data-descricao="{{ l.descricao|escape }}"
+                    data-valor="{{ l.valor }}" data-vencimento="{{ l.vencimento|date:'Y-m-d' }}"
+                    data-status="{{ l.status }}"
+                    data-cliente="{{ l.cliente_id }}" data-funcionario="{{ l.funcionario_id }}"
+                    data-condominio="{{ l.condominio_id }}" data-turma="{{ l.turma_id }}"
+                    data-categoria="{{ l.categoria_id }}"
+                    data-contraparte_nome="{{ l.contraparte_nome|escape }}"
+                    data-contraparte_doc="{{ l.contraparte_doc|escape }}"
+                    data-observacao="{{ l.observacao|default_if_none:''|escape }}"
+                    data-ativo="{{ l.ativo|yesno:'1,0' }}">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+
+            {% if l.status != "CANCELADO" and l.saldo > 0 %}
+              <button class="btn btn-sm btn-outline-success"
+                      data-bs-toggle="modal" data-bs-target="#baixaModal"
+                      data-lancamento="{{ l.id }}" data-saldo="{{ l.saldo }}">
+                <i class="fa-solid fa-check"></i>
+              </button>
+            {% endif %}
+
+            {% if l.status != "CANCELADO" and l.status != "LIQUIDADO" and l.total_baixado == 0 %}
+            <form method="post" action="{% url 'financeiro:cancelar' l.id %}" onsubmit="return confirm('Cancelar este lançamento?');">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-outline-danger"><i class="fa-solid fa-ban"></i></button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="9" class="text-center py-4">Nenhum lançamento encontrado.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card-footer d-flex justify-content-between align-items-center">
+    <div>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</div>
+    <nav>
+      <ul class="pagination mb-0">
+        <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+          {% if page_obj.has_previous %}<a class="page-link" href="?page=1{{ suffix }}">&laquo;</a>{% else %}<span class="page-link">&laquo;</span>{% endif %}
+        </li>
+        <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+          {% if page_obj.has_previous %}<a class="page-link" href="?page={{ page_obj.previous_page_number }}{{ suffix }}">Anterior</a>{% else %}<span class="page-link">Anterior</span>{% endif %}
+        </li>
+        <li class="page-item active"><span class="page-link">{{ page_obj.number }}</span></li>
+        <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+          {% if page_obj.has_next %}<a class="page-link" href="?page={{ page_obj.next_page_number }}{{ suffix }}">Próxima</a>{% else %}<span class="page-link">Próxima</span>{% endif %}
+        </li>
+        <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+          {% if page_obj.has_next %}<a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{{ suffix }}">&raquo;</a>{% else %}<span class="page-link">&raquo;</span>{% endif %}
+        </li>
+      </ul>
+    </nav>
+  </div>
+</div>
+
+<!-- Modal Lançamento -->
+<div class="modal fade" id="lancamentoModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
+    <form id="lancForm" method="post" action="{% url 'financeiro:create' %}">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">Novo Lançamento</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label">Tipo</label>
+            <select name="tipo" class="form-select" required>
+              <option value="RECEBER">A Receber</option>
+              <option value="PAGAR">A Pagar</option>
+            </select>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label">Descrição</label>
+            <input name="descricao" class="form-control" required>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Valor</label>
+            <input name="valor" type="number" step="0.01" min="0" class="form-control" required>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Vencimento</label>
+            <input name="vencimento" type="date" class="form-control" required>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">Cliente</label>
+            <select name="cliente" class="form-select">
+              <option value="">--</option>
+              {% for c in filtro_form.fields.cliente.queryset %}<option value="{{ c.id }}">{{ c.nome_razao }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Funcionário</label>
+            <select name="funcionario" class="form-select">
+              <option value="">--</option>
+              {% for f in filtro_form.fields.funcionario.queryset %}<option value="{{ f.id }}">{{ f.nome }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Condomínio</label>
+            <select name="condominio" class="form-select">
+              <option value="">--</option>
+              {% for d in filtro_form.fields.condominio.queryset %}<option value="{{ d.id }}">{{ d.nome }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Turma</label>
+            <select name="turma" class="form-select">
+              <option value="">--</option>
+              {% for t in filtro_form.fields.turma.queryset %}<option value="{{ t.id }}">{{ t }}</option>{% endfor %}
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Categoria</label>
+            <select name="categoria" class="form-select">
+              <option value="">--</option>
+              {% for cat in filtro_form.fields.categoria.queryset %}<option value="{{ cat.id }}">{{ cat.nome }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Contraparte (nome livre)</label>
+            <input name="contraparte_nome" class="form-control">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Documento</label>
+            <input name="contraparte_doc" class="form-control">
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Observação</label>
+            <textarea name="observacao" rows="2" class="form-control"></textarea>
+          </div>
+
+          <div class="col-md-3 form-check mt-2">
+            <input class="form-check-input" type="checkbox" name="ativo" id="ativoLanc" checked>
+            <label class="form-check-label" for="ativoLanc">Ativo</label>
+          </div>
+
+          <input type="hidden" name="status" value="ABERTO">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancelar</button>
+        <button class="btn btn-primary" type="submit">Salvar</button>
+      </div>
+    </form>
+  </div></div>
+</div>
+
+<!-- Modal Baixa -->
+<div class="modal fade" id="baixaModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <form id="baixaForm" method="post" action="{% url 'financeiro:baixa' %}">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">Registrar Baixa</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="lancamento" value="">
+        <div class="mb-2">
+          <label class="form-label">Data</label>
+          <input name="data" type="date" class="form-control" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Valor (saldo: <span id="saldoSpan">0,00</span>)</label>
+          <input name="valor" type="number" step="0.01" min="0.01" class="form-control" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Forma</label>
+          <select name="forma" class="form-select">
+            <option value="PIX">PIX</option>
+            <option value="DINHEIRO">Dinheiro</option>
+            <option value="CARTAO">Cartão</option>
+            <option value="BOLETO">Boleto</option>
+            <option value="TRANSF">Transferência</option>
+            <option value="OUTRO">Outro</option>
+          </select>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Observação</label>
+          <input name="observacao" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancelar</button>
+        <button class="btn btn-success" type="submit">Registrar</button>
+      </div>
+    </form>
+  </div></div>
+</div>
+
+<!-- Modal Recorrência -->
+<div class="modal fade" id="recorrenciaModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
+    <form method="post" action="{% url 'financeiro:recorrencia' %}">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">Gerar recorrência mensal</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label">Tipo</label>
+            <select name="tipo" class="form-select">
+              <option value="RECEBER">A Receber</option>
+              <option value="PAGAR">A Pagar</option>
+            </select>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label">Descrição</label>
+            <input name="descricao" class="form-control" required>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Valor</label>
+            <input name="valor" type="number" step="0.01" min="0" class="form-control" required>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Dia venc.</label>
+            <input name="dia_venc" type="number" min="1" max="31" value="5" class="form-control" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Meses</label>
+            <input name="quantidade" type="number" min="1" max="60" value="12" class="form-control" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Mês inicial</label>
+            <input name="primeiro_mes" type="date" class="form-control" required>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">Cliente</label>
+            <select name="cliente" class="form-select">
+              <option value="">--</option>
+              {% for c in filtro_form.fields.cliente.queryset %}<option value="{{ c.id }}">{{ c.nome_razao }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Funcionário</label>
+            <select name="funcionario" class="form-select">
+              <option value="">--</option>
+              {% for f in filtro_form.fields.funcionario.queryset %}<option value="{{ f.id }}">{{ f.nome }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Condomínio</label>
+            <select name="condominio" class="form-select">
+              <option value="">--</option>
+              {% for d in filtro_form.fields.condominio.queryset %}<option value="{{ d.id }}">{{ d.nome }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Turma</label>
+            <select name="turma" class="form-select">
+              <option value="">--</option>
+              {% for t in filtro_form.fields.turma.queryset %}<option value="{{ t.id }}">{{ t }}</option>{% endfor %}
+            </select>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Categoria</label>
+            <select name="categoria" class="form-select">
+              <option value="">--</option>
+              {% for cat in filtro_form.fields.categoria.queryset %}<option value="{{ cat.id }}">{{ cat.nome }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Observação</label>
+            <input name="observacao" class="form-control">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancelar</button>
+        <button class="btn btn-dark" type="submit">Gerar</button>
+      </div>
+    </form>
+  </div></div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="btn-group">
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#lancamentoModal" data-mode="create">
+      <i class="fa-solid fa-plus"></i> Novo Lançamento
+    </button>
+    <button class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#recorrenciaModal">
+      <i class="fa-solid fa-bolt"></i> Recorrência
+    </button>
+    <!-- 👇 novo botão -->
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#mensalidadesModal">
+      <i class="fa-solid fa-receipt"></i> Gerar Mensalidades
+    </button>
+  </div>
+  <a class="btn btn-outline-primary" href="{% url 'financeiro:exportar' %}?{{ base_qs }}"><i class="fa-solid fa-file-export"></i> Exportar Excel</a>
+</div>
+
+<!-- Modal Mensalidades -->
+<div class="modal fade" id="mensalidadesModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <form method="post" action="{% url 'financeiro:mensalidades' %}">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">Gerar Mensalidades</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Competência</label>
+          <input type="month" name="competencia" class="form-control" required>
+          <small class="text-muted">Escolha o mês/ano das cobranças (ex.: 2025-09).</small>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Dia de vencimento</label>
+          <input type="number" min="1" max="31" name="dia_venc" value="5" class="form-control" required>
+        </div>
+        <div class="mb-1">
+          <label class="form-label">Turma (opcional)</label>
+          <select name="turma" class="form-select">
+            <option value="">Todas as turmas ativas</option>
+            {% for t in filtro_form.fields.turma.queryset %}
+              <option value="{{ t.id }}">{{ t }}</option>
+            {% endfor %}
+          </select>
+          <small class="text-muted">Deixe em branco para gerar para todas as turmas ativas.</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancelar</button>
+        <button class="btn btn-primary" type="submit">Gerar</button>
+      </div>
+    </form>
+  </div></div>
+</div>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const lancModal = document.getElementById('lancamentoModal');
+  const lancForm = document.getElementById('lancForm');
+  const title = lancModal.querySelector('.modal-title');
+
+  lancModal.addEventListener('show.bs.modal', function (e) {
+    const btn = e.relatedTarget;
+    const mode = btn.getAttribute('data-mode') || 'create';
+    lancForm.reset();
+    lancForm.action = "{% url 'financeiro:create' %}";
+    title.textContent = "Novo Lançamento";
+
+    if (mode === 'edit') {
+      title.textContent = "Editar Lançamento";
+      const id = btn.getAttribute('data-id');
+      lancForm.action = "{% url 'financeiro:update' 0 %}".replace('/0/', '/' + id + '/');
+
+      const setVal = (name, val) => { const el = lancForm.querySelector(`[name="${name}"]`); if (el) el.value = val ?? ''; }
+      const setSel = setVal;
+
+      setSel('tipo', btn.getAttribute('data-tipo'));
+      setVal('descricao', btn.getAttribute('data-descricao'));
+      setVal('valor', btn.getAttribute('data-valor'));
+      setVal('vencimento', btn.getAttribute('data-vencimento'));
+      setSel('status', btn.getAttribute('data-status')); // hidden por padrão (ABERTO), mas aceita edição
+
+      setSel('cliente', btn.getAttribute('data-cliente'));
+      setSel('funcionario', btn.getAttribute('data-funcionario'));
+      setSel('condominio', btn.getAttribute('data-condominio'));
+      setSel('turma', btn.getAttribute('data-turma'));
+      setSel('categoria', btn.getAttribute('data-categoria'));
+
+      setVal('contraparte_nome', btn.getAttribute('data-contraparte_nome'));
+      setVal('contraparte_doc', btn.getAttribute('data-contraparte_doc'));
+      setVal('observacao', btn.getAttribute('data-observacao'));
+
+      const ativo = btn.getAttribute('data-ativo') === '1';
+      const ativoEl = lancForm.querySelector('[name="ativo"]'); if (ativoEl) ativoEl.checked = ativo;
+    }
+  });
+
+  const baixaModal = document.getElementById('baixaModal');
+  const baixaForm = document.getElementById('baixaForm');
+  const saldoSpan = document.getElementById('saldoSpan');
+  baixaModal.addEventListener('show.bs.modal', function (e) {
+    const btn = e.relatedTarget;
+    const id = btn.getAttribute('data-lancamento');
+    const saldo = btn.getAttribute('data-saldo');
+    baixaForm.reset();
+    baixaForm.querySelector('[name="lancamento"]').value = id;
+    saldoSpan.textContent = (saldo || "0").toString().replace('.', ',');
+  });
+});
+</script>
+
+{% endblock %}

@@ -41,6 +41,9 @@ INSTALLED_APPS = [
     'condominios',
     'funcionarios',
     "modalidades",
+    "turmas",
+    "financeiro"
+
 ]
 
 MIDDLEWARE = [

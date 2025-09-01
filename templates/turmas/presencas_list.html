@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Listas de Presença | MCA{% endblock %}
+{% block content %}
+
+{% if messages %}
+  <div class="mb-3">{% for message in messages %}<div class="alert alert-{{ message.tags }} mb-2">{{ message }}</div>{% endfor %}</div>
+{% endif %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h4 class="mb-1">Listas de Presença — {{ turma.modalidade.nome }} / {{ turma.condominio.nome }}</h4>
+    <div class="text-muted">
+      Professor: <strong>{{ turma.professor.nome }}</strong> ·
+      Dia: {{ turma.get_dia_semana_display }} {{ turma.hora_inicio|time:"H:i" }} ·
+      Vigência: {{ turma.inicio_vigencia|date:"d/m/Y" }}{% if turma.fim_vigencia %} a {{ turma.fim_vigencia|date:"d/m/Y" }}{% else %} (sem fim){% endif %}
+    </div>
+  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'turmas:presencas_turma' turma_id=turma.id %}">
+    <i class="fa-solid fa-rotate"></i> Atualizar
+  </a>
+</div>
+
+<form method="get" class="card card-body mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label">De</label>
+      <input type="date" name="data_de" value="{{ filtro.initial.data_de }}" class="form-control">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Até</label>
+      <input type="date" name="data_ate" value="{{ filtro.initial.data_ate }}" class="form-control">
+    </div>
+    <div class="col-md-2 d-grid">
+      <button class="btn btn-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> Filtrar</button>
+    </div>
+  </div>
+</form>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <form method="post" action="{% url 'turmas:presenca_criar' %}">
+          {% csrf_token %}
+          <input type="hidden" name="turma_id" value="{{ turma.id }}">
+          <div class="row g-2">
+            <div class="col-md-5">
+              <label class="form-label">Criar lista para o dia</label>
+              <input type="date" name="data" class="form-control" required>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label">Observação (opcional)</label>
+              <input type="text" name="observacao_geral" class="form-control">
+            </div>
+            <div class="col-md-2 d-grid">
+              <button class="btn btn-success mt-md-4" type="submit"><i class="fa-solid fa-plus"></i> Criar</button>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="col-md-6">
+        <form method="post" action="{% url 'turmas:presenca_auto' %}">
+          {% csrf_token %}
+          <input type="hidden" name="turma_id" value="{{ turma.id }}">
+          <div class="row g-2">
+            <div class="col-md-4">
+              <label class="form-label">Gerar de</label>
+              <input type="date" name="data_de" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Até</label>
+              <input type="date" name="data_ate" class="form-control" required>
+            </div>
+            <div class="col-md-4 d-grid">
+              <button class="btn btn-dark mt-md-4" type="submit"><i class="fa-solid fa-bolt"></i> Gerar automático</button>
+            </div>
+          </div>
+          <small class="text-muted">Serão criadas apenas datas no dia da semana da turma e dentro da vigência. Listas existentes são ignoradas.</small>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Data</th>
+          <th>Presentes</th>
+          <th>Total itens</th>
+          <th>Observação</th>
+          <th style="width: 120px;">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in listas %}
+        <tr>
+          <td>{{ l.data|date:"d/m/Y" }}</td>
+          <td><span class="badge text-bg-{% if l.total_presentes == l.total_itens and l.total_itens > 0 %}success{% else %}primary{% endif %}">{{ l.total_presentes }}</span></td>
+          <td>{{ l.total_itens }}</td>
+          <td class="text-truncate" style="max-width: 420px;">{{ l.observacao_geral }}</td>
+          <td>
+            <a class="btn btn-sm btn-outline-primary" href="{% url 'turmas:presenca_detalhe' l.id %}">
+              <i class="fa-solid fa-clipboard-check"></i> Abrir
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-center py-4">Nenhuma lista encontrada.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
