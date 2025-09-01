@@ -74,6 +74,7 @@ class Lancamento(models.Model):
         verbose_name = "Lançamento financeiro"
         verbose_name_plural = "Lançamentos financeiros"
 
+
     def __str__(self):
         return f"{self.get_tipo_display()} · {self.descricao} · R$ {self.valor} · {self.vencimento:%d/%m/%Y}"
 

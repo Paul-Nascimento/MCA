@@ -42,7 +42,8 @@ INSTALLED_APPS = [
     'funcionarios',
     "modalidades",
     "turmas",
-    "financeiro"
+    "financeiro",
+    'notificacoes'
 
 ]
 
@@ -138,3 +139,14 @@ LOGIN_URL = '/login/'
 
 # (opcional) após logout
 LOGOUT_REDIRECT_URL = '/login/'
+
+
+# E-mail (Gmail)
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = "paulonascimento0910@gmail.com"
+EMAIL_HOST_PASSWORD = "shwzichufwbrrsqn"          # senha de app do Gmail
+DEFAULT_FROM_EMAIL = "MCA <paulonascimento0910@gmail.com>"
+SERVER_EMAIL = DEFAULT_FROM_EMAIL

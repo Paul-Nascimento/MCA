@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pt-br">
+  <body style="font-family:Arial,Helvetica,sans-serif">
+    <h2>Seu boleto chegou 💳</h2>
+    <p>Olá, <strong>{{ nome_cliente }}</strong>!</p>
+
+    <p>Segue o boleto referente a: <strong>{{ lancamento.descricao }}</strong>.</p>
+    <ul>
+      <li>Valor: <strong>R$ {{ lancamento.valor }}</strong></li>
+      <li>Vencimento: <strong>{{ lancamento.vencimento|date:"d/m/Y" }}</strong></li>
+      {% if linha_digitavel %}<li>Linha digitável: <code>{{ linha_digitavel }}</code></li>{% endif %}
+    </ul>
+
+    {% if pdf_url %}
+      <p>Você também pode <a href="{{ pdf_url }}" target="_blank" rel="noopener">baixar o boleto por este link</a>.</p>
+    {% else %}
+      <p>O boleto seguiu em anexo (PDF).</p>
+    {% endif %}
+
+    <p>Qualquer dúvida, responda este e-mail. Obrigado!</p>
+    <hr>
+    <small>Mensagem automática • MCA</small>
+  </body>
+</html>

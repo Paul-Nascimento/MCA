@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Alunos da Turma | MCA{% endblock %}
+
 {% block content %}
 
 {% if messages %}
@@ -10,74 +11,134 @@
   </div>
 {% endif %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+<!-- Cabeçalho da turma -->
+<div class="d-flex justify-content-between align-items-start mb-3">
   <div>
-    <h4 class="mb-1">
-      {{ turma.modalidade.nome }} — {{ turma.condominio.nome }}
-    </h4>
+    <h3 class="mb-1">
+      {{ turma.modalidade.nome }} — {{ turma.get_dia_semana_display }} {{ turma.hora_inicio|time:"H:i" }}
+      {% if turma.nome_exibicao %}
+        <small class="text-muted">/ {{ turma.nome_exibicao }}</small>
+      {% endif %}
+    </h3>
     <div class="text-muted">
-      Professor: <strong>{{ turma.professor.nome }}</strong> ·
-      {{ turma.get_dia_semana_display }} {{ turma.hora_inicio|time:"H:i" }} ·
-      Capacidade: {{ turma.capacidade }} ·
-      Ocupação: {{ ocupacao }}
+      <i class="fa-solid fa-building"></i> {{ turma.condominio.nome }} &nbsp;|&nbsp;
+      <i class="fa-solid fa-chalkboard-teacher"></i> {{ turma.professor.nome }} &nbsp;|&nbsp;
+      Vigência: {{ turma.inicio_vigencia|date:"d/m/Y" }}{% if turma.fim_vigencia %} a {{ turma.fim_vigencia|date:"d/m/Y" }}{% else %} (sem fim){% endif %}
     </div>
   </div>
-  <div class="d-flex gap-2">
-    <a class="btn btn-outline-dark" href="{% url 'turmas:presencas_turma' turma_id=turma.id %}">
-      <i class="fa-solid fa-clipboard-list"></i> Presenças
-    </a>
-    <a class="btn btn-outline-secondary" href="{% url 'turmas:list' %}">
-      <i class="fa-solid fa-arrow-left"></i> Voltar
-    </a>
+  <div class="text-end">
+    {% if ocupacao >= capacidade %}
+      <span class="badge text-bg-danger fs-6">{{ ocupacao }}/{{ capacidade }}</span>
+    {% else %}
+      <span class="badge text-bg-primary fs-6">{{ ocupacao }}/{{ capacidade }}</span>
+    {% endif %}
+    <div class="small text-muted">Vagas: {{ vagas }}</div>
   </div>
 </div>
 
+<!-- Tabela de alunos -->
 <div class="card">
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
       <thead class="table-light">
         <tr>
-          <th>Cliente</th>
-          <th>CPF/CNPJ</th>
+          <th>Aluno</th>
+          <th>Documento</th>
+          <th>Cliente (responsável)</th>
           <th>Início</th>
-          <th>Fim</th>
           <th>Status</th>
-          <th style="width: 120px;">Ações</th>
+          <th style="width: 170px;">Ações</th>
         </tr>
       </thead>
       <tbody>
-        {% for m in matriculas %}
-        <tr>
-          <td>{{ m.cliente.nome_razao }}</td>
-          <td>{{ m.cliente.cpf_cnpj }}</td>
-          <td>{{ m.data_inicio|date:"d/m/Y" }}</td>
-          <td>{{ m.data_fim|date:"d/m/Y" }}</td>
-          <td>
-            {% if m.ativa %}
-              <span class="badge text-bg-success">Ativa</span>
-            {% else %}
-              <span class="badge text-bg-secondary">Inativa</span>
-            {% endif %}
-          </td>
-          <td>
-            {% if m.ativa %}
-            <form method="post" action="{% url 'turmas:encerrar_matricula' m.id %}" onsubmit="return confirm('Encerrar matrícula deste aluno?');">
-              {% csrf_token %}
-              <input type="hidden" name="turma_id" value="{{ turma.id }}">
-              <button class="btn btn-sm btn-outline-danger">
-                <i class="fa-solid fa-user-xmark"></i> Encerrar
-              </button>
-            </form>
-            {% else %}
-              <button class="btn btn-sm btn-outline-secondary" disabled>—</button>
-            {% endif %}
-          </td>
-        </tr>
+        {% for m in page_obj.object_list %}
+          {% firstof m.participante_nome m.cliente.nome_razao as nome_aluno %}
+          {% firstof m.participante_cpf m.cliente.cpf_cnpj as doc_aluno %}
+          <tr>
+            <td>
+              {{ nome_aluno }}
+              {% if m.participante_nome %}
+                <br><small class="text-muted">Participante</small>
+              {% else %}
+                <br><small class="text-muted">Próprio cliente</small>
+              {% endif %}
+            </td>
+            <td>{{ doc_aluno|default:"—" }}</td>
+            <td>{{ m.cliente.nome_razao }}</td>
+            <td>{{ m.data_inicio|date:"d/m/Y" }}</td>
+            <td>
+              {% if m.ativa %}
+                <span class="badge text-bg-success">Ativa</span>
+              {% else %}
+                <span class="badge text-bg-secondary">Inativa</span>
+                {% if m.data_fim %}
+                  <div class="small text-muted">até {{ m.data_fim|date:"d/m/Y" }}</div>
+                {% endif %}
+              {% endif %}
+            </td>
+            <td>
+              {% if m.ativa %}
+                <form method="post"
+                      action="{% url 'turmas:desmatricular' m.id %}"
+                      class="d-inline"
+                      onsubmit="return confirm('Encerrar a matrícula de {{ nome_aluno }}?');">
+                  {% csrf_token %}
+                  {% if hoje %}
+                    <input type="hidden" name="data_fim" value="{{ hoje|date:'Y-m-d' }}">
+                  {% endif %}
+                  <button class="btn btn-sm btn-outline-danger">
+                    <i class="fa-solid fa-user-minus"></i> Desmatricular
+                  </button>
+                </form>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
         {% empty %}
-        <tr><td colspan="6" class="text-center py-4">Nenhuma matrícula.</td></tr>
+          <tr>
+            <td colspan="6" class="text-center py-4">Nenhum aluno matriculado.</td>
+          </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+
+  <!-- Paginação -->
+  <div class="card-footer d-flex justify-content-between align-items-center">
+    <div>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</div>
+    <nav>
+      <ul class="pagination mb-0">
+        <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+          {% if page_obj.has_previous %}
+            <a class="page-link" href="?page=1">&laquo;</a>
+          {% else %}<span class="page-link">&laquo;</span>{% endif %}
+        </li>
+        <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+          {% if page_obj.has_previous %}
+            <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Anterior</a>
+          {% else %}<span class="page-link">Anterior</span>{% endif %}
+        </li>
+        <li class="page-item active"><span class="page-link">{{ page_obj.number }}</span></li>
+        <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+          {% if page_obj.has_next %}
+            <a class="page-link" href="?page={{ page_obj.next_page_number }}">Próxima</a>
+          {% else %}<span class="page-link">Próxima</span>{% endif %}
+        </li>
+        <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+          {% if page_obj.has_next %}
+            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">&raquo;</a>
+          {% else %}<span class="page-link">&raquo;</span>{% endif %}
+        </li>
+      </ul>
+    </nav>
+  </div>
 </div>
+
+<div class="mt-3">
+  <a href="{% url 'turmas:list' %}" class="btn btn-outline-secondary">
+    <i class="fa-solid fa-arrow-left"></i> Voltar
+  </a>
+</div>
+
 {% endblock %}

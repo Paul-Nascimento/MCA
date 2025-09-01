@@ -58,6 +58,7 @@ class Turma(models.Model):
         ]
         verbose_name = "Turma"
         verbose_name_plural = "Turmas"
+        
 
     def __str__(self):
         base = self.nome_exibicao or f"{self.modalidade} - {self.condominio}"
@@ -69,7 +70,16 @@ class Turma(models.Model):
         from datetime import datetime, timedelta
         dt = datetime.combine(self.inicio_vigencia, self.hora_inicio) + timedelta(minutes=self.duracao_minutos)
         return dt.time()
+    @property
+    def ocupacao(self) -> int:
+        """
+        Total de matrículas ATIVAS (não é por dia; é a capacidade ocupada atual).
+        """
+        return self.matriculas.filter(ativa=True).count()
 
+    @property
+    def lotada(self) -> bool:
+        return self.ocupacao >= self.capacidade
 
 class ListaPresenca(models.Model):
     turma = models.ForeignKey("turmas.Turma", on_delete=models.PROTECT, related_name="listas_presenca")
@@ -130,26 +140,30 @@ class ItemPresenca(models.Model):
         return f"{self.cliente_nome_snapshot} — {'Presente' if self.presente else 'Ausente'}"
 
 
-class Matricula(models.Model):
-    turma = models.ForeignKey(Turma, on_delete=models.PROTECT, related_name="matriculas")
-    cliente = models.ForeignKey("clientes.Cliente", on_delete=models.PROTECT, related_name="matriculas")
+# turmas/models.py (trecho da Matricula)
+SEXO_CHOICES = (("M","Masculino"), ("F","Feminino"), ("O","Outro"))
 
+class Matricula(models.Model):
+    turma = models.ForeignKey("turmas.Turma", on_delete=models.PROTECT, related_name="matriculas")
+    cliente = models.ForeignKey("clientes.Cliente", on_delete=models.PROTECT, related_name="matriculas")
     data_inicio = models.DateField()
     data_fim = models.DateField(null=True, blank=True)
     ativa = models.BooleanField(default=True)
 
+    # 👇 NOVO: dados do participante (opcional). Se vazio => o aluno é o próprio cliente.
+    participante_nome = models.CharField(max_length=255, blank=True)
+    participante_cpf = models.CharField(max_length=14, blank=True)  # guarde limpo nos services
+    participante_sexo = models.CharField(max_length=1, choices=SEXO_CHOICES, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["-ativa", "turma", "cliente__nome_razao"]
-        unique_together = []  # validamos via service para permitir histórico
-        indexes = [
-            models.Index(fields=["turma", "ativa"]),
-            models.Index(fields=["cliente", "ativa"]),
-        ]
-        verbose_name = "Matrícula"
-        verbose_name_plural = "Matrículas"
+        ordering = ["-ativa","cliente__nome_razao","id"]
+        indexes = [models.Index(fields=["turma","ativa"]), models.Index(fields=["cliente"])]
+        # Opcional: evitar duplicidade exata do mesmo participante por turma:
+        # unique_together = [("turma","cliente","participante_cpf","participante_nome")]
 
     def __str__(self):
-        status = "ativa" if self.ativa else "inativa"
-        return f"{self.cliente} em {self.turma} ({status})"
+        who = self.participante_nome or self.cliente.nome_razao
+        return f"{who} @ {self.turma}"
+

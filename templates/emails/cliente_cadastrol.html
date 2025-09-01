@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="pt-br">
+  <body style="font-family:Arial,Helvetica,sans-serif">
+    <h2>Cadastro confirmado 🎉</h2>
+    <p>Olá, <strong>{{ cliente.nome_razao }}</strong>!</p>
+    <p>Seu cadastro na <strong>MCA</strong> foi realizado com sucesso.</p>
+    <p>CPF/CNPJ: {{ cliente.cpf_cnpj }}<br>
+       E-mail: {{ cliente.email|default:"(não informado)" }}</p>
+    <p>Qualquer dúvida, responda este e-mail.</p>
+    <hr>
+    <small>Mensagem automática • MCA</small>
+  </body>
+</html>

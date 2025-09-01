@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="pt-br">
+  <body style="font-family:Arial,Helvetica,sans-serif">
+    <h2>Confirmação de matrícula ✅</h2>
+    <p>Olá, <strong>{{ cliente.nome_razao }}</strong>!</p>
+    <p>Confirmamos a matrícula de <strong>{{ participante }}</strong> na turma:</p>
+
+    <ul>
+      <li>Modalidade: <strong>{{ turma.modalidade.nome }}</strong></li>
+      <li>Condomínio: <strong>{{ turma.condominio.nome }}</strong></li>
+      <li>Dia/Horário: <strong>{{ turma.get_dia_semana_display }} {{ turma.hora_inicio|time:"H:i" }}</strong></li>
+      <li>Início da matrícula: <strong>{{ matricula.data_inicio|date:"d/m/Y" }}</strong></li>
+    </ul>
+
+    <p>Nos vemos na aula!</p>
+    <hr>
+    <small>Mensagem automática • MCA</small>
+  </body>
+</html>

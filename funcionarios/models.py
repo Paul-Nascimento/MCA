@@ -1,5 +1,6 @@
 from django.db import models
 from django.core.validators import RegexValidator, EmailValidator
+from django.contrib.auth.models import User
 
 DOC_VALIDATOR = RegexValidator(
     regex=r'^(\d{11}|\d{14})$',
@@ -7,6 +8,11 @@ DOC_VALIDATOR = RegexValidator(
 )
 
 class Funcionario(models.Model):
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="funcionario",
+        null=True, blank=True
+    )
+
     cpf_cnpj = models.CharField("CPF/CNPJ", max_length=14, unique=True, validators=[DOC_VALIDATOR])
     nome = models.CharField("Nome", max_length=255)
     email = models.EmailField("E-mail", blank=True, validators=[EmailValidator()])
