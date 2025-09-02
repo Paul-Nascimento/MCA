@@ -19,7 +19,7 @@ class Cliente(models.Model):
     numero_id = models.CharField(max_length=20, blank=True)
     logradouro = models.CharField(max_length=255, blank=True)
     bairro = models.CharField(max_length=100, blank=True)
-    complemento = models.CharField(max_length=100, blank=True)
+    complemento = models.CharField(max_length=100, blank=True,null=True)
     municipio = models.CharField(max_length=100, blank=True)
     estado = models.CharField(max_length=2, choices=UF_CHOICES, blank=True)
 
@@ -28,6 +28,11 @@ class Cliente(models.Model):
     ativo = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    contrato_aceito = models.BooleanField(default=False)
+    contrato_aceito_em = models.DateTimeField(null=True, blank=True)
+    contrato_token = models.CharField(max_length=64, blank=True, db_index=True)
+    contrato_token_expira_em = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["nome_razao", "id"]

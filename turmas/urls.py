@@ -27,4 +27,8 @@ urlpatterns = [
     path("turmas/presencas/auto/", views_presenca.gerar_listas_automaticas_view, name="presenca_auto"),
     path("turmas/presencas/<int:lista_id>/", views_presenca.presenca_detalhe, name="presenca_detalhe"),
     path("turmas/presencas/<int:lista_id>/salvar/", views_presenca.presenca_salvar_view, name="presenca_salvar"),
+    # turmas/urls.py (adicione esta rota)
+    path("turmas/<int:turma_id>/selecionar-cliente/", views.selecionar_cliente, name="selecionar_cliente"),
+    
+
 ]

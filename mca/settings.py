@@ -43,7 +43,8 @@ INSTALLED_APPS = [
     "modalidades",
     "turmas",
     "financeiro",
-    'notificacoes'
+    'notificacoes',
+    'django.contrib.humanize',
 
 ]
 
@@ -55,6 +56,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    
 ]
 
 ROOT_URLCONF = 'mca.urls'
@@ -123,7 +125,10 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [BASE_DIR / 'static']  # onde ficam seus estáticos no projeto
+# Em produção:
+STATIC_ROOT = BASE_DIR / 'staticfiles'    
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -150,3 +155,11 @@ EMAIL_HOST_USER = "paulonascimento0910@gmail.com"
 EMAIL_HOST_PASSWORD = "shwzichufwbrrsqn"          # senha de app do Gmail
 DEFAULT_FROM_EMAIL = "MCA <paulonascimento0910@gmail.com>"
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
+
+from urllib.parse import quote
+import django
+
+django.utils.http.urlquote = quote
+X_FRAME_OPTIONS = "SAMEORIGIN"
+

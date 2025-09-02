@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>Termos do Contrato</h3>
+<p>Olá, {{ cliente.nome_razao }}.</p>
+<form method="post">{% csrf_token %}
+  <button class="btn btn-success">Aceitar</button>
+</form>
+{% endblock %}

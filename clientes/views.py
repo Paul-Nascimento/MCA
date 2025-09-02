@@ -99,3 +99,41 @@ def exportar_excel_view(request: HttpRequest):
     resp = HttpResponse(content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     resp["Content-Disposition"] = f'attachment; filename="{filename}"'
     return resp
+
+
+
+from django.shortcuts import render
+from django.views.decorators.http import require_http_methods
+from django.utils import timezone
+from django.contrib import messages
+from django.db import transaction
+from .models import Cliente
+
+@require_http_methods(["GET","POST"])
+@transaction.atomic
+def aceite_contrato(request, token: str):
+    cliente = Cliente.objects.filter(contrato_token=token).first()
+    if not cliente:
+        messages.error(request, "Link inválido ou já utilizado.")
+        return render(request, "clientes/aceite_erro.html", status=400)
+
+    if cliente.contrato_token_expira_em and timezone.now() > cliente.contrato_token_expira_em:
+        messages.error(request, "Link expirado. Solicite um novo.")
+        return render(request, "clientes/aceite_erro.html", status=400)
+
+    if request.method == "GET":
+        return render(request, "clientes/aceite_contrato.html", {"cliente": cliente})
+
+    # POST -> confirmar
+    cliente.contrato_aceito = True
+    cliente.contrato_aceito_em = timezone.now()
+    cliente.ativo = True                 # ativa aqui se quiser
+    cliente.contrato_token = ""          # invalida token
+    cliente.contrato_token_expira_em = None
+    cliente.save(update_fields=[
+        "contrato_aceito","contrato_aceito_em","ativo",
+        "contrato_token","contrato_token_expira_em"
+    ])
+    messages.success(request, "Contrato aceito. Cadastro ativado!")
+    return render(request, "clientes/aceite_sucesso.html", {"cliente": cliente})
+

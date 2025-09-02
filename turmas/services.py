@@ -179,11 +179,14 @@ def matricular_cliente(
         ativa=True,
     )
 
+    try:
+        from notificacoes.emails import send_matricula_resumo
+        #send_matricula_resumo(m)
+    except Exception as e:
+        # opcional: logue isso; por hora, só não interrompe o fluxo
+        print("Falha ao enviar e-mail de matrícula:", e)
 
-    print('CADASTRO EFETUADO. Email será enviado ao cliente')
-    
-    from notificacoes import emails as mailer
-    mailer.send_confirmacao_matricula(m)
+    return m
 
 
 @transaction.atomic

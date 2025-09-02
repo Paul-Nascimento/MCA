@@ -97,17 +97,19 @@ def obter_funcionario_por_doc(cpf_cnpj: str) -> Funcionario:
     return fun
 
 # ========= Busca =========
-def buscar_funcionarios(q: str = "", ativos: Optional[bool] = None):
+from django.db.models import Q
+from .models import Funcionario
+
+def buscar_funcionarios(q: str = "", ativo: bool | None = None, regime: str | None = None):
     qs = Funcionario.objects.all()
     if q:
-        qs = qs.filter(
-            Q(nome__icontains=q) |
-            Q(email__icontains=q) |
-            Q(cpf_cnpj__icontains=_digits(q))
-        )
-    if ativos is not None:
-        qs = qs.filter(ativo=ativos)
+        qs = qs.filter(Q(nome__icontains=q) | Q(email__icontains=q))
+    if ativo is not None:
+        qs = qs.filter(ativo=ativo)
+    if regime:
+        qs = qs.filter(regime_trabalhista=regime)
     return qs.order_by("nome", "id")
+
 
 # ========= Importação / Exportação Excel =========
 def importar_funcionarios_de_excel(file_or_path, *, sheet_name: str | None = None, strategy: str = "upsert") -> dict:

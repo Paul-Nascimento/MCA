@@ -47,23 +47,44 @@ def _weekday_matches(turma: Turma, d: date) -> bool:
 
 # ===== Consultas =====
 
+# turmas/services_presenca.py (ou onde estiver)
+from typing import Optional
+from datetime import date
+from django.db.models import Count, Sum, IntegerField, Case, When
+from django.db.models.functions import Coalesce
+from .models import ListaPresenca
+
 def listas_da_turma(turma_id: int, data_de: Optional[date] = None, data_ate: Optional[date] = None):
     """
-    Retorna queryset de listas com agregados (qtd itens e presentes).
+    Retorna 'queryset' de dicts com agregados (qtd itens e presentes),
+    evitando colisão com propriedades do modelo.
     """
-    qs = (
-        ListaPresenca.objects.filter(turma_id=turma_id)
-        .annotate(
-            total_itens=Count("itens"),
-            total_presentes=Sum("itens__presente"),
-        )
-        .order_by("-data", "-id")
-    )
+    qs = ListaPresenca.objects.filter(turma_id=turma_id)
+
     if data_de:
         qs = qs.filter(data__gte=data_de)
     if data_ate:
         qs = qs.filter(data__lte=data_ate)
+
+    qs = (
+        qs.annotate(
+            total_itens=Count("itens", distinct=True),
+            total_presentes=Coalesce(
+                Sum(
+                    Case(
+                        When(itens__presente=True, then=1),
+                        default=0,
+                        output_field=IntegerField(),
+                    )
+                ),
+                0,
+            ),
+        )
+        .values("id", "data", "observacao_geral", "total_itens", "total_presentes")
+        .order_by("-data", "-id")
+    )
     return qs
+
 
 
 def abrir_lista(lista_id: int):

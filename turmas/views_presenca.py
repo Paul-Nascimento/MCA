@@ -31,8 +31,11 @@ def listas_da_turma(request: HttpRequest, turma_id: int):
     data_de = filtro.cleaned_data.get("data_de") if filtro.is_valid() else None
     data_ate = filtro.cleaned_data.get("data_ate") if filtro.is_valid() else None
 
+    print('Aqui')
     listas = ps.listas_da_turma(turma_id=turma.id, data_de=data_de, data_ate=data_ate)
 
+    print(f'A lista ps é {listas}')
+    
     create_form = ListaPresencaCreateForm(initial={"turma_id": turma.id})
     auto_form = ListaPresencaRangeForm(initial={"turma_id": turma.id})
 

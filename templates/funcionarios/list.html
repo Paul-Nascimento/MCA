@@ -28,6 +28,25 @@
         <option value="0" {% if ativos_param == "0" %}selected{% endif %}>Inativos</option>
       </select>
     </div>
+        <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Busca</label>
+        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Nome ou e-mail">
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">Regime trabalhista</label>
+        <select name="regime" class="form-select">
+          <option value="">— Todos —</option>
+          {% for value, label in REGIMES %}
+            <option value="{{ value }}" {% if value == regime %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+
+
+
     <div class="col-md-3 d-grid">
       <button class="btn btn-primary" type="submit">
         <i class="fa-solid fa-magnifying-glass"></i> Filtrar
@@ -63,6 +82,7 @@
           <th>Nome</th>
           <th>E-mail</th>
           <th>Telefone</th>
+          <th>Regime Trabalhista</th>
           <th>Ativo</th>
           <th style="width: 90px;">Ações</th>
         </tr>
@@ -74,6 +94,7 @@
           <td>{{ f.nome }}</td>
           <td>{{ f.email }}</td>
           <td>{{ f.telefone }}</td>
+          <td>{{ form.regime_trabalhista }}</td>
           <td>
             {% if f.ativo %}
               <span class="badge text-bg-success">Ativo</span>
@@ -90,6 +111,7 @@
                     data-cpf_cnpj="{{ f.cpf_cnpj }}"
                     data-nome="{{ f.nome|escape }}"
                     data-email="{{ f.email|default_if_none:'' }}"
+                    data-regime="{{ f.regime_trabalhista }}"  
                     data-telefone="{{ f.telefone|default_if_none:'' }}"
                     data-ativo="{{ f.ativo|yesno:'1,0' }}">
               <i class="fa-solid fa-pen"></i>
@@ -162,12 +184,29 @@
               <label class="form-label">Telefone</label>
               <input name="telefone" class="form-control">
             </div>
+            
+            <div class="mb-2">
+              <label class="form-label">Regime trabalhista</label>
+              <select name="regime_trabalhista" id="id_regime_trabalhista" class="form-select" required>
+              {% for value, label in REGIMES %}
+                <option value="{{ value }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+            </div>
+
             <div class="col-md-12 form-check mt-2">
               <input class="form-check-input" type="checkbox" name="ativo" id="ativoCheck" checked>
               <label class="form-check-label" for="ativoCheck">Ativo</label>
             </div>
           </div>
+
+            
+
         </div>
+        
+        
+
+
         <div class="modal-footer">
           <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
           <button class="btn btn-primary" type="submit">Salvar</button>
@@ -234,6 +273,32 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 });
+
+
+  document.getElementById('modalFuncionario').addEventListener('show.bs.modal', function (ev) {
+    const btn  = ev.relatedTarget;
+    const form = this.querySelector('form');
+
+    const id     = btn.getAttribute('data-id') || '';
+    const nome   = btn.getAttribute('data-nome') || '';
+    const email  = btn.getAttribute('data-email') || '';
+    const regime = btn.getAttribute('data-regime') || '';
+    const ativo  = btn.getAttribute('data-ativo') || '1';
+
+    // Define action conforme criar/editar
+    if (id) {
+      form.action = "{% url 'funcionarios:update' 0 %}".replace('/0/', '/' + id + '/');
+    } else {
+      form.action = "{% url 'funcionarios:create' %}";
+    }
+
+    // Preenche campos
+    form.querySelector('[name="nome"]').value  = nome;
+    form.querySelector('[name="email"]').value = email;
+    form.querySelector('[name="regime_trabalhista"]').value = regime; // <- aqui!
+    const chk = form.querySelector('[name="ativo"]');
+    if (chk) chk.checked = (ativo === '1');
+  });
 </script>
 
 {% endblock %}

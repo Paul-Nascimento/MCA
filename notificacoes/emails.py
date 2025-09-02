@@ -52,23 +52,24 @@ def send_email_html(*, subject, to, template, context, attach_paths=None):
 # E-mails específicos MCA
 # =======================
 
-def send_cliente_cadastro_confirmacao(cliente) -> bool:
-    """
-    Confirmação de cadastro do cliente.
-    """
-    if not cliente.email:
-        return False
-    ctx = {"cliente": cliente}
-    subject = f"Bem-vindo(a), {cliente.nome_razao} — Seu cadastro na MCA"
-    # anexa exemplo.pdf se existir no BASE_DIR
-    exemplo_pdf = Path(getattr(settings, "BASE_DIR", ".")) / "exemplo.pdf"
-    return send_email_html(
+# notificacoes/emails.py
+from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+
+def send_email_html(*, subject: str, to: str, template: str, context: dict) -> bool:
+    html = render_to_string(template, context)
+    text = strip_tags(html)
+    msg = EmailMultiAlternatives(
         subject=subject,
-        to=cliente.email,
-        template="emails/cliente_cadastro.html",
-        context=ctx,
-        attach_paths=[exemplo_pdf],
+        body=text,
+        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+        to=[to],
     )
+    msg.attach_alternative(html, "text/html")
+    msg.send(fail_silently=False)  # importante: mostra erro se houver
+    return True
 
 
 def send_confirmacao_matricula(matricula) -> bool:
@@ -156,4 +157,55 @@ def send_boleto_lancamento(lancamento, boleto=None,
         context=ctx,
         attach_paths=attach_paths,
         attach_inline=inline,
+    )
+
+# notificacoes/emails.py
+from decimal import Decimal
+
+def send_matricula_resumo(matricula) -> bool:
+    """
+    Envia um e-mail simples após a matrícula contendo:
+    - Nome do cliente
+    - Nome de quem vai na aula (participante ou o próprio cliente)
+    - Preço da aula (campo 'valor' ou 'preco' da turma)
+    """
+    cliente = matricula.cliente
+    if not getattr(cliente, "email", None):
+        return False  # nada a fazer
+
+    turma = matricula.turma
+    participante = matricula.participante_nome or cliente.nome_razao
+
+    # tenta pegar preço da turma em 'valor' OU 'preco'
+    from decimal import Decimal
+    preco = getattr(turma, "valor", None)
+    if preco is None:
+        preco = getattr(turma, "preco", None)
+    if preco is None:
+        preco = Decimal("0.00")
+
+    ctx = {
+        "cliente_nome": cliente.nome_razao,
+        "participante": participante,
+        "preco": preco,
+        "turma": turma,
+    }
+
+    # assunto com informações úteis
+    try:
+        modalidade_nome = turma.modalidade.nome
+    except Exception:
+        modalidade_nome = "Aula"
+    try:
+        condominio_nome = turma.condominio.nome
+    except Exception:
+        condominio_nome = ""
+
+    subject = f"Matrícula confirmada — {modalidade_nome}" + (f" ({condominio_nome})" if condominio_nome else "")
+
+    return send_email_html(
+        subject=subject,
+        to=cliente.email,
+        template="emails/matricula_resumo.html",
+        context=ctx,
     )

@@ -132,14 +132,16 @@ def alunos_turma(request: HttpRequest, turma_id: int):
     alunos = ts.alunos_da_turma(turma_id)
     return render(request, "turmas/alunos.html", {"turma": turma, "alunos": alunos})
 
+# turmas/views.py (substitua sua matricular_view por esta versão que respeita 'next')
 @login_required
 def matricular_view(request: HttpRequest):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")
     form = MatriculaForm(request.POST)
+    next_url = request.POST.get("next")  # <- aqui
     if not form.is_valid():
         messages.error(request, f"Dados inválidos: {form.errors}")
-        return redirect(reverse("turmas:list"))
+        return redirect(next_url or reverse("turmas:list"))
 
     cd = form.cleaned_data
     try:
@@ -154,7 +156,8 @@ def matricular_view(request: HttpRequest):
         messages.success(request, "Matrícula realizada.")
     except Exception as e:
         messages.error(request, f"Falha ao matricular: {e}")
-    return redirect(reverse("turmas:list"))
+    return redirect(next_url or reverse("turmas:list"))  # <- volta para onde veio
+
 
 @login_required
 def exportar_view(request: HttpRequest):
@@ -236,3 +239,119 @@ def desmatricular_view(request: HttpRequest, matricula_id: int):
     except Exception as e:
         messages.error(request, f"Falha ao desmatricular: {e}")
         return redirect(reverse("turmas:list"))
+
+
+
+# turmas/views.py (adicione)
+import re
+from django.db.models import Q
+from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
+from django.utils.http import urlquote
+from urllib.parse import quote
+
+from django.shortcuts import render, redirect
+from django.urls import reverse
+from django.contrib import messages
+from django.utils.timezone import localdate
+
+from clientes.models import Cliente
+from .models import Turma
+from . import services as ts
+
+@login_required
+def escolher_cliente(request, turma_id: int):
+    turma = (Turma.objects
+             .select_related("modalidade","condominio","professor")
+             .filter(id=turma_id).first())
+    if not turma:
+        messages.error(request, "Turma não encontrada.")
+        return redirect(reverse("turmas:list"))
+
+    q = (request.GET.get("q") or "").strip()
+    cpf = (request.GET.get("cpf") or "").strip()
+    ativos = request.GET.get("ativos", "1")  # padrão: só ativos
+
+    qs = Cliente.objects.all()
+    if q:
+        qs = qs.filter(Q(nome_razao__icontains=q) | Q(email__icontains=q))
+    if cpf:
+        cpf_clean = re.sub(r"\D+", "", cpf)
+        if cpf_clean:
+            qs = qs.filter(cpf_cnpj__icontains=cpf_clean)
+    if ativos in ("1","0"):
+        qs = qs.filter(ativo=(ativos == "1"))
+
+    qs = qs.order_by("nome_razao", "id")
+
+    paginator = Paginator(qs, 20)
+    try:
+        page_num = max(1, int(request.GET.get("page", "1") or "1"))
+    except Exception:
+        page_num = 1
+    page_obj = paginator.get_page(page_num)
+
+    base_qs = f"&q={urlquote(q)}&cpf={urlquote(cpf)}&ativos={ativos}"
+
+    return render(request, "turmas/escolher_cliente.html", {
+        "turma": turma,
+        "page_obj": page_obj,
+        "q": q,
+        "cpf": cpf,
+        "ativos": ativos,
+        "base_qs": base_qs,
+        "hoje": localdate(),
+    })
+
+# turmas/views.py (substitua a sua selecionar_cliente por esta)
+from django.utils.timezone import localdate
+from django.db.models import Q
+from django.utils.http import urlquote  # opcional
+from clientes import services as cs
+from clientes.models import Cliente
+from django.core.paginator import Paginator
+
+@login_required
+def selecionar_cliente(request, turma_id: int):
+    turma = (Turma.objects
+             .select_related("modalidade","condominio","professor")
+             .filter(id=turma_id).first())
+    if not turma:
+        messages.error(request, "Turma não encontrada.")
+        return redirect(reverse("turmas:list"))
+
+    q   = (request.GET.get("q") or "").strip()
+    cpf = (request.GET.get("cpf") or "").strip()
+    page = request.GET.get("page") or "1"
+    try:
+        page = max(1, int(page))
+    except Exception:
+        page = 1
+
+    # usa seu service (nome/email e cpf normalizado)
+    qs = cs.buscar_clientes(q=q, ativos=True)
+    if cpf:
+        import re
+        cpf_clean = re.sub(r"\D+", "", cpf)
+        if cpf_clean:
+            qs = qs.filter(cpf_cnpj__icontains=cpf_clean)
+
+    qs = qs.only("id","nome_razao","cpf_cnpj","email").order_by("nome_razao","id")
+    paginator = Paginator(qs, 20)
+    page_obj = paginator.get_page(page)
+
+    # mantém o filtro na paginação
+    from django.http import QueryDict
+    qd = request.GET.copy()
+    qd.pop("page", None)
+    base_qs = "&" + qd.urlencode() if qd else ""
+
+    template = "turmas/selecionar_cliente_embed.html" if request.GET.get("embed") == "1" else "turmas/selecionar_cliente.html"
+    return render(request, template, {
+        "turma": turma,
+        "q": q,
+        "cpf": cpf,
+        "page_obj": page_obj,
+        "base_qs": base_qs,
+        "hoje": localdate(),  # use no template
+    })

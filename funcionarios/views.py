@@ -7,42 +7,37 @@ from django.urls import reverse
 from .forms import FuncionarioForm, FuncionarioFiltroForm, ImportacaoExcelForm
 from . import services as cs
 
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+from . import services as fs
+from .models import Funcionario
+
 @login_required
-def list_funcionarios(request: HttpRequest):
+def list_funcionarios(request):
     q = request.GET.get("q", "").strip()
-    ativos_param = request.GET.get("ativos", "")
-    if   ativos_param == "1": ativos = True
-    elif ativos_param == "0": ativos = False
-    else:                     ativos = None
+    ativo = request.GET.get("ativo")
+    regime = request.GET.get("regime")  # valor do choice
 
-    qs = cs.buscar_funcionarios(q=q, ativos=ativos)
+    ativo_bool = None
+    if ativo in ("1", "0"):
+        ativo_bool = (ativo == "1")
 
-    page_str = request.GET.get("page", "1")
-    try:
-        page = int(page_str)
-        if page < 1: page = 1
-    except (TypeError, ValueError):
-        page = 1
+    qs = fs.buscar_funcionarios(q=q, ativo=ativo_bool, regime=regime)
 
-    page_obj = cs.paginar_queryset(qs, page=page, per_page=20)
-
-    qd = request.GET.copy()
-    qd.pop("page", None)
-    base_qs = qd.urlencode()
-    suffix = f"&{base_qs}" if base_qs else ""
-
-    filtro_form = FuncionarioFiltroForm(initial={"q": q, "ativos": ativos_param})
-    form = FuncionarioForm()
-    import_form = ImportacaoExcelForm()
+    # paginação (se você já usa seu helper, mantenha; aqui é Django puro)
+    from django.core.paginator import Paginator
+    page = max(1, int(request.GET.get("page", "1") or 1))
+    page_obj = Paginator(qs, 20).get_page(page)
 
     return render(request, "funcionarios/list.html", {
         "page_obj": page_obj,
-        "filtro_form": filtro_form,
-        "form": form,
-        "import_form": import_form,
-        "q": q, "ativos_param": ativos_param,
-        "base_qs": base_qs, "suffix": suffix,
+        "q": q,
+        "ativo": ativo,
+        "regime": regime,
+        "REGIMES": Funcionario.RegimeTrabalhista.choices,
+        "base_qs": f"&q={q}&ativo={ativo or ''}&regime={regime or ''}",
     })
+
 
 @login_required
 def create_funcionario(request: HttpRequest):

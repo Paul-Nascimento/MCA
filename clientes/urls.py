@@ -11,4 +11,5 @@ urlpatterns = [
     path("clientes/<int:pk>/ativar/", views.ativar_cliente, name="ativar"),
     path("clientes/importar/", views.importar_excel_view, name="importar"),
     path("clientes/exportar/", views.exportar_excel_view, name="exportar"),
+    path("clientes/aceite/<str:token>/", views.aceite_contrato, name="aceite")
 ]

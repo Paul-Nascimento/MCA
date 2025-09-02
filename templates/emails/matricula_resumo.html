@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pt-br">
+  <body style="font-family:Arial,Helvetica,sans-serif">
+    <h2>Matrícula confirmada</h2>
+
+    <p><strong>Cliente:</strong> {{ cliente_nome }}</p>
+    <p><strong>Quem vai na aula:</strong> {{ participante }}</p>
+    <p><strong>Preço da aula:</strong> R$ {{ preco|floatformat:2 }}</p>
+
+    <hr>
+    <p style="color:#666;font-size:12px;margin-top:16px">
+      {% if turma %}
+        Turma: {{ turma.modalidade.nome }} — {{ turma.get_dia_semana_display }} {{ turma.hora_inicio|time:"H:i" }}<br>
+        Condomínio: {{ turma.condominio.nome }}
+      {% endif %}
+    </p>
+  </body>
+</html>

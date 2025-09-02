@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="pt-br">
+  <body style="font-family:Arial,Helvetica,sans-serif">
+    <h2>Confirme seu cadastro</h2>
+    <p>Olá, <strong>{{ cliente.nome_razao }}</strong>!</p>
+    <p>Para concluir seu cadastro, clique no botão abaixo:</p>
+    <p>
+      <a href="{{ link_aceite }}" style="background:#0d6efd;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">
+        Ler e aceitar o contrato
+      </a>
+    </p>
+    <p>Se preferir, copie e cole este link:<br><code>{{ link_aceite }}</code></p>
+  </body>
+</html>

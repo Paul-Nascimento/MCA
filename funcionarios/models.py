@@ -21,6 +21,25 @@ class Funcionario(models.Model):
     ativo = models.BooleanField(default=True)
     created_at = models.DateTimeField("Criado em", auto_now_add=True)
     updated_at = models.DateTimeField("Atualizado em", auto_now=True)
+    
+    class RegimeTrabalhista(models.TextChoices):
+        HORISTA    = "HORISTA", "Horista"
+        CLT        = "CLT", "CLT"
+        ESTAGIARIO = "ESTAGIARIO", "Estagiário"
+        PJ         = "PJ", "PJ"
+        OUTRO      = "OUTRO", "Outro"
+
+    regime_trabalhista = models.CharField(
+        max_length=20,
+        choices=RegimeTrabalhista.choices,
+        default=RegimeTrabalhista.OUTRO,
+        db_index=True,
+    )
+
+    # opcional: atalho legível
+    @property
+    def regime_label(self) -> str:
+        return self.get_regime_trabalhista_display()
 
     class Meta:
         ordering = ["nome", "id"]

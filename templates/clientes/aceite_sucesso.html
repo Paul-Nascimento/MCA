@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Cadastro Ativado | MCA{% endblock %}
+{% block content %}
+<div class="container" style="max-width:760px">
+  <div class="alert alert-success">
+    <strong>Pronto!</strong> Seu contrato foi aceito e o cadastro está ativo.
+  </div>
+  <p>Bem-vindo(a), {{ cliente.nome_razao }}.</p>
+  <a href="{% url 'clientes:list' %}" class="btn btn-primary">Ir para a área de clientes</a>
+</div>
+{% endblock %}

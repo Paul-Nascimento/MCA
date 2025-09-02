@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -11,79 +12,135 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
     <style>
+        :root{
+            --brand-navy: #0B2B4C;      /* azul do menu (combina com a marca) */
+            --brand-navy-600:#103A68;   /* hover/focus */
+            --ink-80: rgba(255,255,255,.88);
+            --ink-60: rgba(255,255,255,.64);
+        }
         body {
             min-height: 100vh;
             display: flex;
             flex-direction: row;
             background-color: #f8f9fa;
         }
-
         /* Sidebar */
         .sidebar {
             width: 250px;
-            background-color: #212529;
-            color: #fff;
+            background-color: var(--brand-navy);
+            color: var(--ink-80);
             display: flex;
             flex-direction: column;
-            padding: 1rem 0;
+            padding: 0;
             position: fixed;
-            top: 0;
-            bottom: 0;
-            left: 0;
+            top: 0; bottom: 0; left: 0;
         }
 
-        .sidebar h3 {
-            text-align: center;
-            margin-bottom: 2rem;
-            font-size: 1.3rem;
-            font-weight: bold;
-        }
+       
 
-        .sidebar a {
-            color: #adb5bd;
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            padding: .9rem 1rem;
+            text-decoration: none;
+            background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,0));
+            border-bottom: 1px solid rgba(255,255,255,.08);
+        }
+        .brand .logo {
+            height: 40px;
+            width: auto;
+            object-fit: contain;
+            display: block;
+        }
+        .brand .title {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--ink-80);
+            letter-spacing: .3px;
+        }
+        .sidebar a.navlink {
+            color: var(--ink-60);
             padding: 12px 20px;
             text-decoration: none;
             display: flex;
             align-items: center;
-            transition: background 0.2s, color 0.2s;
+            gap: .6rem;
+            transition: background .15s ease, color .15s ease, padding-left .15s ease;
+            border-left: 3px solid transparent;
         }
-
-        .sidebar a:hover {
-            background-color: #343a40;
+        .sidebar a.navlink i { font-size: 1.1rem; opacity: .9; }
+        .sidebar a.navlink:hover,
+        .sidebar a.navlink:focus {
+            background-color: var(--brand-navy-600);
             color: #fff;
+            border-left-color: #fff;
+            padding-left: 23px; /* leve efeito de “aproximação” */
+            outline: none;
         }
-
-        .sidebar a i {
-            margin-right: 10px;
-            font-size: 1.2rem;
+        /* classe opcional para marcar link ativo (se quiser usar) */
+        .sidebar a.navlink.active{
+            background-color: var(--brand-navy-600);
+            color: #fff;
+            border-left-color: #fff;
         }
 
         /* Área de conteúdo */
-        .content {
-            margin-left: 250px;
-            padding: 2rem;
-            flex: 1;
+        .content { margin-left: 250px; padding: 2rem; flex: 1; }
+        .sidebar .authbox{
+            margin-top: auto;
+            padding: 1rem;
+            border-top: 1px solid rgba(255,255,255,.08);
+        }
+        .sidebar .authbox .small { color: var(--ink-60); }
+
+         .logoplace {
+            background-color:#F8F9FA
         }
     </style>
 </head>
 <body>
     <!-- Sidebar -->
-    <div class="sidebar">
-        <h3>MCA</h3>
-        <a href="{% url 'home' %}"><i class="fa-solid fa-house"></i> Home</a>
-        <a href="{% url 'clientes:list' %}"><i class="fa-solid fa-users"></i> Clientes</a>
-        <a href="{% url 'financeiro:list' %}" class="{% if app == 'financeiro' %}active{% endif %}"><i class="fa-solid fa-wallet"></i> Financeiro
-        <a href="{% url 'modalidades:list' %}"><i class="fa-solid fa-dumbbell"></i> Modalidades</a>
-        <a href="{% url 'funcionarios:list' %}"><i class="fa-solid fa-chalkboard-teacher"></i>Funcionarios</a>
-        <a href="{% url 'condominios:list' %}"><i class="fa-solid fa-building"></i> Condomínios</a>
-        <a href="{% url 'turmas:list' %}" class="{% if app == 'turmas' %}active{% endif %}"><i class="fa-solid fa-layer-group"></i> Turmas</a>
-</a>
-    </div>
+    <aside class="sidebar">
+        <!-- Brand / Logo -->
+        <a href="{% url 'home' %}" class="brand logoplace">
+            <img src="{% static 'img/logo.png' %}" alt="Logo" class="logo"
+                 onerror="this.style.display='none';">
+            
+        </a>
+
+        <!-- Menu -->
+        <a href="{% url 'home' %}" class="navlink"><i class="fa-solid fa-house"></i> Home</a>
+        <a href="{% url 'clientes:list' %}" class="navlink"><i class="fa-solid fa-users"></i> Clientes</a>
+        <a href="{% url 'financeiro:list' %}" class="navlink"><i class="fa-solid fa-wallet"></i> Financeiro</a>
+        <a href="{% url 'funcionarios:list' %}" class="navlink"><i class="fa-solid fa-chalkboard-user"></i> Funcionários</a>
+        <a href="{% url 'condominios:list' %}" class="navlink"><i class="fa-solid fa-building"></i> Condomínios</a>
+        <a href="{% url 'modalidades:list' %}" class="navlink"><i class="fa-solid fa-dumbbell"></i> Modalidades</a>
+        <a href="{% url 'turmas:list' %}" class="navlink"><i class="fa-solid fa-layer-group"></i> Turmas</a>
+        <a href="#" class="navlink"><i class="fa-solid fa-cog"></i> Parâmetros</a>
+
+        {% if request.user.is_authenticated %}
+        <div class="authbox">
+            <div class="small mb-2">
+                Logado como<br>
+                <strong style="color:#fff">{{ request.user.get_full_name|default:request.user.username }}</strong>
+            </div>
+
+            <form method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-outline-light w-100">
+                    <i class="fa-solid fa-right-from-bracket"></i> Sair
+                </button>
+            </form>
+        </div>
+        {% endif %}
+    </aside>
+
     <!-- Conteúdo principal -->
-    <div class="content">
-        {% block content %}
-        {% endblock %}
-    </div>
+    <main class="content">
+        {% block content %}{% endblock %}
+    </main>
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

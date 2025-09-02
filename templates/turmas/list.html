@@ -141,12 +141,13 @@
             </button>
 
             <button class="btn btn-sm btn-outline-success"
-                    title="Matricular cliente"
-                    data-bs-toggle="modal"
-                    data-bs-target="#matriculaModal"
-                    data-turma="{{ t.id }}">
-              <i class="fa-solid fa-user-plus"></i>
-            </button>
+                  title="Matricular cliente"
+                  data-bs-toggle="modal"
+                  data-bs-target="#selecionarClienteModal"
+                  data-url="{% url 'turmas:selecionar_cliente' t.id %}?embed=1">
+            <i class="fa-solid fa-user-plus"></i>
+          </button>
+
 
             <a class="btn btn-sm btn-outline-secondary"
                title="Ver alunos"
@@ -347,6 +348,43 @@
     </div>
   </div>
 </div>
+
+
+<!-- Modal para seleção de cliente (com iframe) -->
+<div class="modal fade" id="selecionarClienteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Selecionar cliente</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body p-0">
+        <iframe id="iframeSelecionarCliente" src="about:blank" style="width:100%; height:70vh; border:0;"></iframe>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+        <button class="btn btn-outline-primary" type="button" onclick="location.reload()">Atualizar tela</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function(){
+  const modal = document.getElementById('selecionarClienteModal');
+  const iframe = document.getElementById('iframeSelecionarCliente');
+  modal.addEventListener('show.bs.modal', function(ev){
+    const btn = ev.relatedTarget;
+    const url = btn?.getAttribute('data-url');
+    if (url) iframe.src = url;
+  });
+  modal.addEventListener('hidden.bs.modal', function(){
+    // opcional: recarregar a página ao fechar para refletir ocupação
+    // location.reload();
+  });
+});
+</script>
+
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
