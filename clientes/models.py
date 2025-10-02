@@ -29,10 +29,13 @@ class Cliente(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    contrato_aceito = models.BooleanField(default=False)
-    contrato_aceito_em = models.DateTimeField(null=True, blank=True)
-    contrato_token = models.CharField(max_length=64, blank=True, db_index=True)
-    contrato_token_expira_em = models.DateTimeField(null=True, blank=True)
+    ativo = models.BooleanField(default=False)  # garantir default False no modelo
+    aceite_token = models.CharField(max_length=64, null=True, blank=True, unique=True)
+    aceite_expires_at = models.DateTimeField(null=True, blank=True)
+    aceite_confirmado_em = models.DateTimeField(null=True, blank=True)
+
+    #Vinculo direto com condomínio
+    condominio = models.ForeignKey('condominios.Condominio', on_delete=models.CASCADE, related_name='clientes', null=False,blank=False)
 
     class Meta:
         ordering = ["nome_razao", "id"]

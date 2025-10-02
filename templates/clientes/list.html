@@ -24,6 +24,20 @@
         <option value="0" {% if filtro_form.data.ativos == "0" %}selected{% endif %}>Inativos</option>
       </select>
     </div>
+
+    <div class="col-md-4">
+  <label class="form-label">Condomínio</label>
+  <select name="condominio" class="form-select">
+    <option value="">Todos</option>
+    {% for cond in filtro_form.fields.condominio.queryset %}
+      <option value="{{ cond.id }}"
+        {% if filtro_form.data.condominio == cond.id|stringformat:"s" %}selected{% endif %}>
+        {{ cond.nome }}
+      </option>
+    {% endfor %}
+  </select>
+</div>
+
     <div class="col-md-2 d-grid">
       <button class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Filtrar</button>
     </div>
@@ -52,6 +66,7 @@
           <th>Nome</th>
           <th>Doc</th>
           <th>E-mail</th>
+          <th>Condomínio</th>
           <th>Celular</th>
           <th>Status</th>
           <th style="width: 180px;">Ações</th>
@@ -63,10 +78,19 @@
           <td>{{ c.nome_razao }}</td>
           <td>{{ c.cpf_cnpj }}</td>
           <td>{{ c.email }}</td>
+          <td>{{ c.condominio.nome }}</td>
           <td>{{ c.telefone_celular }}</td>
+          
           <td>
-            {% if c.ativo %}<span class="badge text-bg-success">Ativo</span>{% else %}<span class="badge text-bg-secondary">Inativo</span>{% endif %}
+            {% if c.ativo %}
+              <span class="badge text-bg-success">Ativo</span>
+            {% elif c.aceite_expires_at and c.aceite_expires_at < now %}
+              <span class="badge text-bg-danger">Convite expirado</span>
+            {% else %}
+              <span class="badge text-bg-warning">Aguardando confirmação</span>
+            {% endif %}
           </td>
+
           <td class="d-flex gap-1">
             <button class="btn btn-sm btn-outline-primary"
                     data-bs-toggle="modal" data-bs-target="#clienteModal" data-mode="edit"
@@ -84,6 +108,7 @@
                     data-municipio="{{ c.municipio|escape }}"
                     data-estado="{{ c.estado }}"
                     data-email="{{ c.email|escape }}"
+                    data-condominio="{{ c.condominio_id }}"  
                     data-ativo="{{ c.ativo|yesno:'1,0' }}">
               <i class="fa-solid fa-pen"></i>
             </button>
@@ -188,11 +213,16 @@
               {% for uf in uf_list %}<option value="{{ uf }}">{{ uf }}</option>{% endfor %}
             </select>
           </div>
-
+          
           <div class="col-md-8">
             <label class="form-label">E-mail</label>
             <input name="email" type="email" class="form-control">
           </div>
+          <div class="col-md-6">
+            <label class="form-label" for="id_condominio">Condomínio</label>
+            {{ cliente_form.condominio }}
+          </div>
+
 
           <div class="col-md-3 form-check mt-4">
             <input class="form-check-input" type="checkbox" name="ativo" id="ativoCliente" checked>
@@ -263,6 +293,7 @@ document.addEventListener("DOMContentLoaded", function() {
       setVal('municipio', btn.getAttribute('data-municipio'));
       setVal('estado', btn.getAttribute('data-estado'));
       setVal('email', btn.getAttribute('data-email'));
+      setVal('condominio', btn.getAttribute('data-condominio'));
       setCheck('ativo', btn.getAttribute('data-ativo'));
     }
   });

@@ -158,8 +158,7 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 
 from urllib.parse import quote
-import django
+import django.utils.http
 
 django.utils.http.urlquote = quote
 X_FRAME_OPTIONS = "SAMEORIGIN"
-

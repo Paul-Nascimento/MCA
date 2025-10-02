@@ -13,8 +13,9 @@ def list_clientes(request: HttpRequest):
     f = ClienteFiltroForm(request.GET or None)
     cd = f.cleaned_data if f.is_valid() else {}
     qs = cs.buscar_clientes(
-        q=cd.get("q",""),
-        ativos=(None if (cd.get("ativos") in (None,"")) else (cd.get("ativos") == "1"))
+        q=cd.get("q", ""),
+        ativos=(None if (cd.get("ativos") in (None,"")) else (cd.get("ativos") == "1")),
+        condominio=cd.get("condominio")
     )
     # paginação segura
     page_str = request.GET.get("page", "1")
@@ -109,31 +110,32 @@ from django.contrib import messages
 from django.db import transaction
 from .models import Cliente
 
-@require_http_methods(["GET","POST"])
-@transaction.atomic
+
+from django.utils import timezone
+from django.shortcuts import get_object_or_404, render, redirect
+from django.contrib import messages
+from .models import Cliente
+
+@login_required(False)  # aceite deve funcionar sem login; remova se estiver usando @login_required
 def aceite_contrato(request, token: str):
-    cliente = Cliente.objects.filter(contrato_token=token).first()
-    if not cliente:
-        messages.error(request, "Link inválido ou já utilizado.")
-        return render(request, "clientes/aceite_erro.html", status=400)
+    # 1) Busca cliente pelo token
+    cliente = get_object_or_404(Cliente, aceite_token=token)
 
-    if cliente.contrato_token_expira_em and timezone.now() > cliente.contrato_token_expira_em:
-        messages.error(request, "Link expirado. Solicite um novo.")
-        return render(request, "clientes/aceite_erro.html", status=400)
+    # 2) Valida expiração
+    if not cliente.aceite_expires_at or timezone.now() > cliente.aceite_expires_at:
+        messages.error(request, "Link de confirmação expirado. Solicite um novo convite.")
+        # opcional: página específica de expiração
+        return render(request, "clientes/aceite_contrato.html", {"expirado": True, "cliente": cliente})
 
-    if request.method == "GET":
-        return render(request, "clientes/aceite_contrato.html", {"cliente": cliente})
+    # 3) Confirma aceite
+    cliente.ativo = True
+    cliente.aceite_confirmado_em = timezone.now()
+    # Opcional: invalidar o token após o uso
+    cliente.aceite_token = None
+    cliente.aceite_expires_at = None
+    cliente.save(update_fields=["ativo","aceite_confirmado_em","aceite_token","aceite_expires_at"])
 
-    # POST -> confirmar
-    cliente.contrato_aceito = True
-    cliente.contrato_aceito_em = timezone.now()
-    cliente.ativo = True                 # ativa aqui se quiser
-    cliente.contrato_token = ""          # invalida token
-    cliente.contrato_token_expira_em = None
-    cliente.save(update_fields=[
-        "contrato_aceito","contrato_aceito_em","ativo",
-        "contrato_token","contrato_token_expira_em"
-    ])
-    messages.success(request, "Contrato aceito. Cadastro ativado!")
+    # 4) Página de sucesso
     return render(request, "clientes/aceite_sucesso.html", {"cliente": cliente})
+
 

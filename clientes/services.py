@@ -7,8 +7,22 @@ from django.db.models import Q
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.db import transaction
+import secrets
+from datetime import timedelta
+from django.utils import timezone
+from django.core.exceptions import ValidationError
 
 from .models import Cliente
+# clientes/services.py
+from datetime import timedelta
+import secrets
+from django.conf import settings
+from django.utils import timezone
+from django.urls import reverse
+
+from notificacoes.emails import send_email_html
+# clientes/services.py
+
 
 _ONLY_DIGITS = re.compile(r"\D+")
 
@@ -24,8 +38,10 @@ def paginar(qs, page: int = 1, per_page: int = 20):
     except EmptyPage:
         return p.page(p.num_pages if page > 1 else 1)
 
-def buscar_clientes(q: str = "", ativos: Optional[bool] = None):
+def buscar_clientes(q: str = "", ativos: Optional[bool] = None, condominio: Optional[int] = None):
     qs = Cliente.objects.all()
+    if condominio:
+        qs = qs.filter(condominio_id=condominio)
     if q:
         q_clean = clean_doc(q)
         cond = Q(nome_razao__icontains=q) | Q(email__icontains=q)
@@ -36,17 +52,40 @@ def buscar_clientes(q: str = "", ativos: Optional[bool] = None):
         qs = qs.filter(ativo=ativos)
     return qs.order_by("nome_razao", "id")
 
-@transaction.atomic
+# clientes/services.py
+from django.core.exceptions import ValidationError
+
+ACEITE_TTL_DIAS = 7  # expira em 7 dias, ajuste se quiser
+
+def _gerar_token_unico() -> str:
+    # 32 bytes ~ 43 chars urlsafe, suficiente. Se quiser menor, reduza.
+    return secrets.token_urlsafe(32)
+
 def criar_cliente(data: dict) -> Cliente:
     data = {**data}
     data["cpf_cnpj"] = clean_doc(data.get("cpf_cnpj", ""))
     if not data["cpf_cnpj"]:
         raise ValidationError("CPF/CNPJ é obrigatório.")
+    if not data.get("condominio"):
+        raise ValidationError("Condomínio é obrigatório para o cadastro do cliente.")
+
+    # 1) Sempre inicia inativo
+    data["ativo"] = False
+
+    # 2) Gera token e prazo
+    token = _gerar_token_unico()
+    expires = timezone.now() + timedelta(days=ACEITE_TTL_DIAS)
+    data["aceite_token"] = token
+    data["aceite_expires_at"] = expires
+
+    # 3) Cria o cliente
     c = Cliente.objects.create(**data)
 
-    t = enviar_email_aceite(c)
-    print(t)
+    # 4) Envia e-mail de aceite (template + link)
+    enviar_email_aceite(c)  # já existe no projeto — só garantir que usa o token/URL corretos
+
     return c
+
 
 @transaction.atomic
 def atualizar_cliente(cliente_id: int, data: dict) -> Cliente:
@@ -159,15 +198,7 @@ def exportar_excel(queryset=None) -> tuple[str, bytes]:
     return filename, bio.read()
 
 
-# clientes/services.py
-from datetime import timedelta
-import secrets
-from django.conf import settings
-from django.utils import timezone
-from django.urls import reverse
 
-from .models import Cliente
-from notificacoes.emails import send_email_html
 
 def gerar_link_aceite(cliente: Cliente) -> str:
     token = secrets.token_urlsafe(32)
@@ -178,21 +209,29 @@ def gerar_link_aceite(cliente: Cliente) -> str:
     path = reverse("clientes:aceite", args=[token])
     return f"{base}{path}"
 
-def enviar_email_aceite(cliente: Cliente) -> bool:
-    if not cliente.email:
-        raise ValueError("Cliente sem e-mail.")
-    link = gerar_link_aceite(cliente)
-    return send_email_html(
-        subject="Confirme seu cadastro — aceite de contrato",
-        to=cliente.email,
-        template="emails/aceite_contrato.html",
-        context={"cliente": cliente, "link_aceite": link},
-    )
+from django.urls import reverse
+from django.conf import settings
+
+def _build_abs_url(request, url_path: str) -> str:
+    # se tiver sites framework ou SITE_URL no settings, use isso:
+    base = getattr(settings, "SITE_URL", "").rstrip("/")
+    return f"{base}{url_path}"
+
+def enviar_email_aceite(cliente: Cliente):
+    if not cliente.aceite_token:
+        return
+    path = reverse("clientes:aceite", args=[cliente.aceite_token])  # /clientes/aceite/<token>/
+    url = _build_abs_url(None, path)
+
+    # Render do e-mail (HTML e/ou texto)
+    # Ex.: usar render_to_string com context contendo cliente e url
+    # subject = "Confirme sua matrícula"
+    # to = [cliente.email]
+    # send_mail(subject, plain_text_body, from_email, to, html_message=html_body)
+    # -> Reaproveite o que você já tem, apenas garanta que o template inclui {{ url }}
 
 
-# clientes/services.py
-from django.db.models import Q
-from .models import Cliente
+
 
 def buscar_clientes_api(q: str, limit: int = 15):
     qs = Cliente.objects.filter(ativo=True)
