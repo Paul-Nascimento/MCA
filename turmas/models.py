@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator
 from decimal import Decimal
+from django.core.exceptions import ValidationError
 
 DIAS_SEMANA = [
     (0, "Segunda"),
@@ -19,17 +20,14 @@ class Turma(models.Model):
         on_delete=models.PROTECT,
         related_name="turmas"
     )
-    modalidade = models.ForeignKey(
-        "modalidades.Modalidade",
-        on_delete=models.PROTECT,
-        related_name="turmas"
-    )
-    condominio = models.ForeignKey(
-        "condominios.Condominio",
-        on_delete=models.PROTECT,
-        related_name="turmas"
-    )
-
+    condominio = models.ForeignKey("condominios.Condominio", on_delete=models.CASCADE, related_name="turmas")
+    modalidade = models.ForeignKey("modalidades.Modalidade", on_delete=models.CASCADE, related_name="turmas")
+    
+    def clean(self):
+        super().clean()
+        if self.modalidade_id and self.condominio_id:
+            if self.modalidade.condominio_id != self.condominio_id:
+                raise ValidationError("A modalidade selecionada pertence a outro condomínio.")
     # Regras da turma
     nome_exibicao = models.CharField("Nome (opcional)", max_length=255, blank=True)
     valor = models.DecimalField("Valor", max_digits=10, decimal_places=2,

@@ -16,24 +16,38 @@
 <!-- Filtros -->
 <form method="get" class="card card-body mb-3">
   <div class="row g-2 align-items-end">
-    <div class="col-md-8">
-      <label class="form-label">Busca (nome/descrição)</label>
-      <input type="text" name="q" value="{{ filtro_form.initial.q }}" class="form-control" placeholder="Digite para buscar...">
-    </div>
-    <div class="col-md-3">
-      <label class="form-label">Status</label>
-      <select name="ativos" class="form-select">
-        <option value=""  {% if ativos_param == "" %}selected{% endif %}>Todos</option>
-        <option value="1" {% if ativos_param == "1" %}selected{% endif %}>Ativos</option>
-        <option value="0" {% if ativos_param == "0" %}selected{% endif %}>Inativos</option>
-      </select>
-    </div>
-    <div class="col-md-1 d-grid">
-      <button class="btn btn-primary" type="submit">
-        <i class="fa-solid fa-magnifying-glass"></i> Filtrar
-      </button>
-    </div>
+  <div class="col-md-8">
+    <label class="form-label">Busca (nome/descrição)</label>
+    <input type="text" name="q" value="{{ filtro_form.initial.q }}" class="form-control" placeholder="Digite para buscar...">
   </div>
+  <div class="col-md-3">
+    <label class="form-label">Status</label>
+    <select name="ativos" class="form-select">
+      <option value=""  {% if ativos_param == "" %}selected{% endif %}>Todos</option>
+      <option value="1" {% if ativos_param == "1" %}selected{% endif %}>Ativos</option>
+      <option value="0" {% if ativos_param == "0" %}selected{% endif %}>Inativos</option>
+    </select>
+  </div>
+
+  <!-- NOVO: filtro Condomínio -->
+  <div class="col-md-4">
+    <label class="form-label">Condomínio</label>
+    <select name="condominio" class="form-select">
+      <option value="">Todos</option>
+      {% for cond in filtro_form.fields.condominio.queryset %}
+        <option value="{{ cond.id }}"
+          {% if request.GET.condominio == cond.id|stringformat:"s" %}selected{% endif %}>
+          {{ cond.nome }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-md-2">
+    <button class="btn btn-primary w-100" type="submit">Filtrar</button>
+  </div>
+</div>
+
 </form>
 
 <!-- Ações -->
@@ -52,6 +66,7 @@
       <thead class="table-light">
         <tr>
           <th>Nome</th>
+          <th>Condomínio</th>
           <th>Descrição</th>
           <th>Ativo</th>
           <th style="width: 90px;">Ações</th>
@@ -61,6 +76,8 @@
         {% for m in page_obj.object_list %}
         <tr>
           <td>{{ m.nome }}</td>
+          <td>{{ m.condominio.nome }}</td>
+
           <td class="text-truncate" style="max-width: 480px;">{{ m.descricao }}</td>
           <td>
             {% if m.ativo %}
@@ -76,6 +93,7 @@
                     data-mode="edit"
                     data-id="{{ m.id }}"
                     data-nome="{{ m.nome|escape }}"
+                    data-condominio="{{ m.condominio_id }}"
                     data-descricao="{{ m.descricao|default_if_none:''|escape }}"
                     data-ativo="{{ m.ativo|yesno:'1,0' }}">
               <i class="fa-solid fa-pen"></i>
@@ -136,6 +154,15 @@
             <input name="nome" class="form-control" required>
           </div>
           <div class="mb-3">
+          <label for="id_condominio" class="form-label">Condomínio</label>
+          <select name="condominio" id="id_condominio" class="form-select" required>
+            <option value="">Selecione...</option>
+            {% for cond in form.fields.condominio.queryset %}
+              <option value="{{ cond.id }}">{{ cond.nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
+          <div class="mb-3">
             <label class="form-label">Descrição</label>
             <textarea name="descricao" class="form-control" rows="3"></textarea>
           </div>
@@ -175,6 +202,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
       const setVal = (name, value) => { const el = form.querySelector(`[name="${name}"]`); if (el) el.value = value || ''; }
       setVal('nome', button.getAttribute('data-nome'));
+      setVal('condominio', btn.getAttribute('data-condominio'));
       setVal('descricao', button.getAttribute('data-descricao'));
       form.querySelector('[name="ativo"]').checked = (button.getAttribute('data-ativo') === '1');
     }

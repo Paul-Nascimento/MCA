@@ -6,7 +6,7 @@ from django.db.models import Sum, F, Value as V, DecimalField, Count
 from django.db.models.functions import Coalesce
 
 from financeiro.models import Lancamento   # tipo: "RECEBER"/"PAGAR", valor, status, relação com baixas
-from turmas.models import Turma, Matricula # Matricula(ativa=True), Turma(valor|preco, capacidade|limite_vagas)
+from turmas.models import Turma,Matricula # Matricula(ativa=True), Turma(valor|preco, capacidade|limite_vagas)
 
 def _sum_saldo(qs):
     """

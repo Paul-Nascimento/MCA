@@ -26,17 +26,17 @@
     </div>
 
     <div class="col-md-4">
-  <label class="form-label">Condomínio</label>
-  <select name="condominio" class="form-select">
-    <option value="">Todos</option>
-    {% for cond in filtro_form.fields.condominio.queryset %}
-      <option value="{{ cond.id }}"
-        {% if filtro_form.data.condominio == cond.id|stringformat:"s" %}selected{% endif %}>
-        {{ cond.nome }}
-      </option>
-    {% endfor %}
-  </select>
-</div>
+      <label class="form-label">Condomínio</label>
+      <select name="condominio" class="form-select">
+        <option value="">Todos</option>
+        {% for cond in filtro_form.fields.condominio.queryset %}
+          <option value="{{ cond.id }}"
+            {% if filtro_form.data.condominio == cond.id|stringformat:"s" %}selected{% endif %}>
+            {{ cond.nome }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
 
     <div class="col-md-2 d-grid">
       <button class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Filtrar</button>
@@ -80,14 +80,14 @@
           <td>{{ c.email }}</td>
           <td>{{ c.condominio.nome }}</td>
           <td>{{ c.telefone_celular }}</td>
-          
+
           <td>
             {% if c.ativo %}
               <span class="badge text-bg-success">Ativo</span>
-            {% elif c.aceite_expires_at and c.aceite_expires_at < now %}
-              <span class="badge text-bg-danger">Convite expirado</span>
+            {% elif c.aceite_token %}
+              <span class="badge text-bg-secondary">Aguardando</span>
             {% else %}
-              <span class="badge text-bg-warning">Aguardando confirmação</span>
+              <span class="badge text-bg-danger">Inativo</span>
             {% endif %}
           </td>
 
@@ -108,21 +108,32 @@
                     data-municipio="{{ c.municipio|escape }}"
                     data-estado="{{ c.estado }}"
                     data-email="{{ c.email|escape }}"
-                    data-condominio="{{ c.condominio_id }}"  
+                    data-condominio="{{ c.condominio_id }}"
                     data-ativo="{{ c.ativo|yesno:'1,0' }}">
               <i class="fa-solid fa-pen"></i>
             </button>
-            <form method="post" action="{% url 'clientes:ativar' c.id %}">
-              {% csrf_token %}
-              <input type="hidden" name="ativo" value="{% if c.ativo %}0{% else %}1{% endif %}">
-              <button class="btn btn-sm btn-outline-warning">
-                {% if c.ativo %}<i class="fa-solid fa-user-slash"></i>{% else %}<i class="fa-solid fa-user-check"></i>{% endif %}
+
+            {% if not c.aceite_token %}
+              <form method="post" action="{% url 'clientes:ativar' c.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="ativo" value="{% if c.ativo %}0{% else %}1{% endif %}">
+                <button class="btn btn-sm {% if c.ativo %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
+                  {% if c.ativo %}
+                    <i class="fa-solid fa-user-slash"></i>
+                  {% else %}
+                    <i class="fa-solid fa-user-check"></i>
+                  {% endif %}
+                </button>
+              </form>
+            {% else %}
+              <button class="btn btn-sm btn-outline-secondary" title="Aguardando confirmação" disabled>
+                <i class="fa-regular fa-hourglass-half"></i>
               </button>
-            </form>
+            {% endif %}
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="6" class="text-center py-4">Nenhum cliente encontrado.</td></tr>
+        <tr><td colspan="7" class="text-center py-4">Nenhum cliente encontrado.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -213,7 +224,7 @@
               {% for uf in uf_list %}<option value="{{ uf }}">{{ uf }}</option>{% endfor %}
             </select>
           </div>
-          
+
           <div class="col-md-8">
             <label class="form-label">E-mail</label>
             <input name="email" type="email" class="form-control">
@@ -223,10 +234,10 @@
             {{ cliente_form.condominio }}
           </div>
 
-
           <div class="col-md-3 form-check mt-4">
-            <input class="form-check-input" type="checkbox" name="ativo" id="ativoCliente" checked>
+            <input class="form-check-input" type="checkbox" name="ativo" id="ativoCliente" disabled>
             <label class="form-check-label" for="ativoCliente">Ativo</label>
+            <div class="form-text">O cliente será ativado após confirmar o contrato por e-mail.</div>
           </div>
         </div>
       </div>
@@ -238,26 +249,7 @@
   </div></div>
 </div>
 
-<!-- Modal Import -->
-<div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog"><div class="modal-content">
-    <form method="post" action="{% url 'clientes:importar' %}" enctype="multipart/form-data">
-      {% csrf_token %}
-      <div class="modal-header">
-        <h5 class="modal-title">Importar Excel</h5>
-        <button class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <input type="file" name="arquivo" accept=".xlsx" class="form-control" required>
-        <small class="text-muted">Cabeçalhos: cpf_cnpj,nome_razao,data_nascimento,telefone_emergencial,telefone_celular,cep,numero_id,logradouro,bairro,complemento,municipio,estado,email,ativo</small>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
-        <button class="btn btn-success" type="submit">Importar</button>
-      </div>
-    </form>
-  </div></div>
-</div>
+
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {

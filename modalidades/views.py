@@ -14,8 +14,13 @@ def list_modalidades(request: HttpRequest):
     if   ativos_param == "1": ativos = True
     elif ativos_param == "0": ativos = False
     else:                     ativos = None
+    
+    condominio = request.GET.get("condominio") or None
 
-    qs = cs.buscar_modalidades(q=q, ativos=ativos)
+    filtro_form = ModalidadeFiltroForm(request.GET or None)
+    form = ModalidadeForm()
+
+    qs = cs.buscar_modalidades(q=q, ativos=ativos, condominio=condominio)
 
     page_str = request.GET.get("page", "1")
     try:

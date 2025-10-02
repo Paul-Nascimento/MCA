@@ -91,7 +91,7 @@ def importar_excel_view(request: HttpRequest):
     return redirect(reverse("clientes:list"))
 
 @login_required
-def exportar_excel_view(request: HttpRequest):
+def exportar(request: HttpRequest):
     qs = cs.buscar_clientes(
         q=request.GET.get("q",""),
         ativos=None if request.GET.get("ativos","") == "" else request.GET.get("ativos")=="1"
@@ -100,6 +100,8 @@ def exportar_excel_view(request: HttpRequest):
     resp = HttpResponse(content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     resp["Content-Disposition"] = f'attachment; filename="{filename}"'
     return resp
+
+
 
 
 
@@ -139,3 +141,21 @@ def aceite_contrato(request, token: str):
     return render(request, "clientes/aceite_sucesso.html", {"cliente": cliente})
 
 
+
+from django.views.decorators.http import require_POST
+from django.shortcuts import get_object_or_404
+from .models import Cliente
+
+@require_POST
+@login_required
+def toggle_status(request, pk: int):
+    c = get_object_or_404(Cliente, pk=pk)
+    # Se estiver aguardando confirmação (tem token), não permite toggle
+    if not c.ativo and c.aceite_token:
+        messages.info(request, "Cliente aguardando confirmação; altere o status somente após a confirmação ou reenviar o convite.")
+        return redirect(reverse("clientes:list"))
+
+    c.ativo = not c.ativo
+    c.save(update_fields=["ativo"])
+    messages.success(request, ("Cliente ativado." if c.ativo else "Cliente desativado."))
+    return redirect(reverse("clientes:list"))
