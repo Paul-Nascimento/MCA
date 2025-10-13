@@ -166,6 +166,8 @@
   <div class="modal-dialog modal-lg"><div class="modal-content">
     <form id="clienteForm" method="post" action="{% url 'clientes:create' %}">
       {% csrf_token %}
+      <!-- campo oculto garante que 'ativo' entre como 0 no POST (checkbox está desabilitado) -->
+      <input type="hidden" name="ativo" value="0">
       <div class="modal-header">
         <h5 class="modal-title">Novo Cliente</h5>
         <button class="btn-close" data-bs-dismiss="modal"></button>
@@ -227,7 +229,7 @@
 
           <div class="col-md-8">
             <label class="form-label">E-mail</label>
-            <input name="email" type="email" class="form-control">
+            <input name="email" type="email" class="form-control" required>
           </div>
           <div class="col-md-6">
             <label class="form-label" for="id_condominio">Condomínio</label>

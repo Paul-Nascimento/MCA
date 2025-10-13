@@ -22,20 +22,23 @@ def list_funcionarios(request):
     if ativo in ("1", "0"):
         ativo_bool = (ativo == "1")
 
-    qs = fs.buscar_funcionarios(q=q, ativo=ativo_bool, regime=regime)
+    qs = fs.buscar_funcionarios(q=q, ativo=True, regime=regime)
 
+    print(qs)
     # paginação (se você já usa seu helper, mantenha; aqui é Django puro)
     from django.core.paginator import Paginator
     page = max(1, int(request.GET.get("page", "1") or 1))
     page_obj = Paginator(qs, 20).get_page(page)
 
     return render(request, "funcionarios/list.html", {
+        
         "page_obj": page_obj,
         "q": q,
         "ativo": ativo,
         "regime": regime,
         "REGIMES": Funcionario.RegimeTrabalhista.choices,
-        "base_qs": f"&q={q}&ativo={ativo or ''}&regime={regime or ''}",
+        "base_qs": f"&q={q}&ativo={ativo}&regime={regime}",
+        "funcionario_form": FuncionarioForm()
     })
 
 

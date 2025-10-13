@@ -94,7 +94,7 @@
           <td>{{ f.nome }}</td>
           <td>{{ f.email }}</td>
           <td>{{ f.telefone }}</td>
-          <td>{{ form.regime_trabalhista }}</td>
+          <td>{{ f.get_regime_trabalhista_display }}</td>
           <td>
             {% if f.ativo %}
               <span class="badge text-bg-success">Ativo</span>

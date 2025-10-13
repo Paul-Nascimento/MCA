@@ -4,11 +4,10 @@ from .models import Funcionario
 class FuncionarioForm(forms.ModelForm):
     class Meta:
         model = Funcionario
-        fields = ["cpf_cnpj","nome", "email", "regime_trabalhista", "ativo"]  # + outros campos que você já usa
+        fields = ["cpf_cnpj", "nome", "email", "telefone", "regime_trabalhista", "ativo"]  # + telefone
         widgets = {
             "regime_trabalhista": forms.Select(choices=Funcionario.RegimeTrabalhista.choices),
         }
-
 
 class FuncionarioFiltroForm(forms.Form):
     q = forms.CharField(label="Busca (nome, e-mail, CPF/CNPJ)", required=False)

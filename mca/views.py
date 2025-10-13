@@ -32,6 +32,8 @@ def _detect_field(model, candidates):
 @login_required
 def home(request):
     # --- Financeiro: totais de saldo (exclui CANCELADO) ---
+    
+    """
     base = Lancamento.objects.exclude(status="CANCELADO")
 
     print('Aq')
@@ -73,4 +75,5 @@ def home(request):
         "faturamento_previsto": faturamento_previsto,
         "ocupacao_percentual": None if ocupacao_percentual is None else ocupacao_percentual.quantize(Decimal('0.01')),
     }
-    return render(request, "home.html", ctx)
+    """
+    return render(request, "home.html")

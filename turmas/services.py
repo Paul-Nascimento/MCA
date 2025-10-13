@@ -1,140 +1,171 @@
-# turmas/services.py
 from __future__ import annotations
-from typing import Optional, Iterable, Dict
-from datetime import datetime, date, time, timedelta
+
+from datetime import date, time
 from decimal import Decimal
-import re
+from typing import Dict, Optional, Tuple, List, Any
 
-from django.db import transaction
-from django.db.models import Q
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
+from django.db import transaction
+from django.db.models import Q, QuerySet
 
-from .models import Turma, Matricula
-from clientes.models import Cliente
+from .models import Turma
 
-_ONLY_DIGITS = re.compile(r"\D+")
+# Imports opcionais — só são usados em funções específicas.
+# Mantidos dentro das funções quando possível para evitar carregamento antecipado.
+try:
+    from clientes.models import Cliente  # noqa
+except Exception:
+    Cliente = None  # apenas para type hints/robustez
 
-def _clean_doc(s: str) -> str:
-    return _ONLY_DIGITS.sub("", (s or ""))
+# ------------------------------------------------------------
+# Utilidades
+# ------------------------------------------------------------
 
-# =========================
-# BUSCA / LISTAGEM DE TURMAS
-# =========================
-def buscar_turmas(
+# Mapa para filtro de "dia_semana" (1..7)
+_DIA_FIELD = {1: "seg", 2: "ter", 3: "qua", 4: "qui", 5: "sex", 6: "sab", 7: "dom"}
+
+def _dias_ativos_from_obj(t: Turma) -> List[str]:
+    out = []
+    if t.seg: out.append("Seg")
+    if t.ter: out.append("Ter")
+    if t.qua: out.append("Qua")
+    if t.qui: out.append("Qui")
+    if t.sex: out.append("Sex")
+    if t.sab: out.append("Sáb")
+    if t.dom: out.append("Dom")
+    return out
+
+def _flags_from_data(data: Dict[str, Any], fallback: Optional[Turma] = None) -> Dict[str, bool]:
+    def getb(k: str) -> bool:
+        if k in data:
+            v = data[k]
+            if isinstance(v, bool):
+                return v
+            return str(v).lower() in ("1", "true", "on")
+        return bool(getattr(fallback, k)) if fallback is not None else False
+    return {k: getb(k) for k in ("seg", "ter", "qua", "qui", "sex", "sab", "dom")}
+
+def _qtd_dias(flags: Dict[str, bool]) -> int:
+    return sum(1 for v in flags.values() if v)
+
+def _hora_cruza(hini: time, dur: int, hini_b: time, dur_b: int) -> bool:
+    a0, a1 = hini.hour * 60 + hini.minute, hini.hour * 60 + hini.minute + int(dur)
+    b0, b1 = hini_b.hour * 60 + hini_b.minute, hini_b.hour * 60 + hini.minute + int(dur_b)
+    # corrigindo b1 (typo acima): use hini_b
+    b0, b1 = hini_b.hour * 60 + hini_b.minute, hini_b.hour * 60 + hini_b.minute + int(dur_b)
+    return (a0 < b1) and (b0 < a1)
+
+# ------------------------------------------------------------
+# Regras/validações de conflito
+# ------------------------------------------------------------
+
+def _checar_conflito_professor(
     *,
-    q: str = "",
-    condominio_id: Optional[int] = None,
-    modalidade_id: Optional[int] = None,
-    professor_id: Optional[int] = None,
-    dia_semana: Optional[int] = None,
-    ativos: Optional[bool] = None,
+    professor_id: int,
+    flags: Dict[str, bool],
+    hora_inicio: time,
+    duracao_minutos: int,
+    inicio_vigencia: date,
+    fim_vigencia: Optional[date],
+    turma_id_excluir: Optional[int] = None,
 ):
-    """
-    Retorna queryset de Turma com filtros. Usa select_related para evitar N+1.
-    """
-    qs = (
-        Turma.objects
-        .select_related("modalidade", "condominio", "professor")
-        .all()
-    )
+    if _qtd_dias(flags) == 0:
+        raise ValidationError("Selecione ao menos um dia da semana.")
 
-    if q:
-        qs = qs.filter(
-            Q(nome_exibicao__icontains=q) |
-            Q(modalidade__nome__icontains=q) |
-            Q(condominio__nome__icontains=q) |
-            Q(professor__nome__icontains=q)
-        )
-
-    if condominio_id:
-        qs = qs.filter(condominio_id=condominio_id)
-    if modalidade_id:
-        qs = qs.filter(modalidade_id=modalidade_id)
-    if professor_id:
-        qs = qs.filter(professor_id=professor_id)
-    if dia_semana is not None and str(dia_semana) != "":
-        qs = qs.filter(dia_semana=dia_semana)
-    if ativos is not None:
-        qs = qs.filter(ativo=ativos)
-
-    return qs.order_by("modalidade__nome", "condominio__nome", "dia_semana", "hora_inicio", "id")
-
-# =========================
-# CRUD DE TURMA
-# =========================
-def _hora_fim(hora_inicio: time, duracao_minutos: int) -> time:
-    dt = datetime.combine(date.today(), hora_inicio) + timedelta(minutes=int(duracao_minutos))
-    return dt.time()
-
-def _vigencias_se_cruzam(ini1: date, fim1: Optional[date], ini2: date, fim2: Optional[date]) -> bool:
-    fim1x = fim1 or date(2999, 12, 31)
-    fim2x = fim2 or date(2999, 12, 31)
-    return ini1 <= fim2x and ini2 <= fim1x
-
-def _intervalos_horarios_se_cruzam(h1_ini: time, h1_fim: time, h2_ini: time, h2_fim: time) -> bool:
-    # overlap: start < other_end && other_start < end
-    return (h1_ini < h2_fim) and (h2_ini < h1_fim)
-
-def _checar_conflito_professor(*, professor_id: int, dia_semana: int,
-                               hora_inicio: time, duracao_minutos: int,
-                               inicio_vigencia: date, fim_vigencia: Optional[date],
-                               turma_id_excluir: Optional[int] = None):
-    """
-    Impede que o professor tenha duas turmas no mesmo horário/dia com vigência que se cruza.
-    """
-    h_fim = _hora_fim(hora_inicio, duracao_minutos)
-    qs = Turma.objects.filter(
-        professor_id=professor_id,
-        dia_semana=dia_semana,
-        ativo=True
-    )
+    qs = Turma.objects.filter(professor_id=professor_id)
     if turma_id_excluir:
         qs = qs.exclude(id=turma_id_excluir)
 
-    for t in qs.only("id", "hora_inicio", "duracao_minutos", "inicio_vigencia", "fim_vigencia"):
-        if not _vigencias_se_cruzam(inicio_vigencia, fim_vigencia, t.inicio_vigencia, t.fim_vigencia):
-            continue
-        t_fim = _hora_fim(t.hora_inicio, t.duracao_minutos)
-        if _intervalos_horarios_se_cruzam(hora_inicio, h_fim, t.hora_inicio, t_fim):
-            raise ValidationError(f"Conflito de horário com a turma #{t.id} do mesmo professor.")
+    # filtra dias ativos
+    dia_q = Q()
+    for k, ativo in flags.items():
+        if ativo:
+            dia_q |= Q(**{k: True})
+    if dia_q:
+        qs = qs.filter(dia_q)
+
+    # filtra vigência que cruza
+    qs = qs.filter(
+        Q(fim_vigencia__isnull=True, inicio_vigencia__lte=fim_vigencia or date.max) |
+        Q(fim_vigencia__isnull=False, inicio_vigencia__lte=fim_vigencia or date.max, fim_vigencia__gte=inicio_vigencia)
+    )
+
+    # checa choque de horário
+    for t in qs.only("id", "hora_inicio", "duracao_minutos"):
+        if _hora_cruza(hora_inicio, duracao_minutos, t.hora_inicio, t.duracao_minutos):
+            raise ValidationError("Conflito de horário para o professor em pelo menos um dos dias selecionados.")
+
+# ------------------------------------------------------------
+# CRUD Turmas
+# ------------------------------------------------------------
 
 @transaction.atomic
-def criar_turma(data: dict) -> Turma:
-    # Valida conflitos
+def criar_turma(data: Dict[str, Any]) -> Turma:
+    """
+    Recebe TurmaForm.cleaned_data. FKs são instâncias (professor, modalidade).
+    """
+    flags = _flags_from_data(data)
+
+    prof = data["professor"]
+    professor_id = prof.id if hasattr(prof, "id") else int(prof)
+
     _checar_conflito_professor(
-        professor_id=data["professor"],
-        dia_semana=data["dia_semana"],
+        professor_id=professor_id,
+        flags=flags,
         hora_inicio=data["hora_inicio"],
-        duracao_minutos=data["duracao_minutos"],
+        duracao_minutos=int(data["duracao_minutos"]),
         inicio_vigencia=data["inicio_vigencia"],
         fim_vigencia=data.get("fim_vigencia"),
     )
-    t = Turma.objects.create(**data)
-    return t
+
+    if data.get("fim_vigencia") and data["fim_vigencia"] < data["inicio_vigencia"]:
+        raise ValidationError("A data de fim da vigência não pode ser anterior ao início.")
+
+    return Turma.objects.create(**data)
 
 @transaction.atomic
-def atualizar_turma(turma_id: int, data: dict) -> Turma:
+def atualizar_turma(turma_id: int, data: Dict[str, Any]) -> Turma:
     t = Turma.objects.filter(id=turma_id).first()
     if not t:
         raise ObjectDoesNotExist("Turma não encontrada.")
+
+    flags = _flags_from_data(data, fallback=t)
+
+    prof_or_id = data.get("professor", t.professor_id)
+    professor_id = prof_or_id.id if hasattr(prof_or_id, "id") else int(prof_or_id)
+
     _checar_conflito_professor(
-        professor_id=data.get("professor", t.professor_id),
-        dia_semana=data.get("dia_semana", t.dia_semana),
+        professor_id=professor_id,
+        flags=flags,
         hora_inicio=data.get("hora_inicio", t.hora_inicio),
-        duracao_minutos=data.get("duracao_minutos", t.duracao_minutos),
+        duracao_minutos=int(data.get("duracao_minutos", t.duracao_minutos)),
         inicio_vigencia=data.get("inicio_vigencia", t.inicio_vigencia),
         fim_vigencia=data.get("fim_vigencia", t.fim_vigencia),
-        turma_id_excluir=t.id
+        turma_id_excluir=t.id,
     )
+
     for k, v in data.items():
         setattr(t, k, v)
+
+    if t.fim_vigencia and t.fim_vigencia < t.inicio_vigencia:
+        raise ValidationError("A data de fim da vigência não pode ser anterior ao início.")
+
     t.full_clean()
     t.save()
     return t
 
-# =========================
-# MATRÍCULAS
-# =========================
+@transaction.atomic
+def toggle_status(turma_id: int) -> Turma:
+    t = Turma.objects.filter(id=turma_id).first()
+    if not t:
+        raise ObjectDoesNotExist("Turma não encontrada.")
+    t.ativo = not bool(t.ativo)
+    t.save(update_fields=["ativo"])
+    return t
+
+# ------------------------------------------------------------
+# Matrículas
+# ------------------------------------------------------------
 @transaction.atomic
 def matricular_cliente(
     *,
@@ -144,111 +175,144 @@ def matricular_cliente(
     participante_nome: str = "",
     participante_cpf: str = "",
     participante_sexo: str = "",
-) -> Matricula:
-    turma = Turma.objects.filter(id=turma_id, ativo=True).first()
-    if not turma:
-        raise ValidationError("Turma não encontrada ou inativa.")
+    proprio_cliente: bool = True
+):
+    """
+    Cria uma matrícula. Quando é o próprio cliente, os campos de participante
+    devem ir como string vazia (""), não None, para não violar NOT NULL.
+    """
+    try:
+        from .models import Matricula
+    except Exception as e:
+        raise ValidationError("Matrícula indisponível neste projeto.") from e
 
-    # capacidade
-    if hasattr(turma, "ocupacao"):
-        # property do model
-        if turma.ocupacao >= turma.capacidade:
-            raise ValidationError("Turma está lotada.")
+    if not cliente_id:
+        raise ValidationError("Cliente é obrigatório.")
+
+    # Normaliza campos para respeitar NOT NULL no banco
+    if proprio_cliente:
+        p_nome = ""
+        p_cpf  = ""
+        p_sexo = ""
     else:
-        # fallback
-        if Matricula.objects.filter(turma_id=turma_id, ativa=True).count() >= turma.capacidade:
-            raise ValidationError("Turma está lotada.")
+        p_nome = (participante_nome or "").strip()
+        p_cpf  = (participante_cpf or "").strip()
+        p_sexo = (participante_sexo or "").strip()
 
-    # evitar duplicidade do mesmo participante/cliente ativo
-    cpf_clean = _clean_doc(participante_cpf)
-    dup = Matricula.objects.filter(
-        turma_id=turma_id, cliente_id=cliente_id, ativa=True,
-        participante_nome=participante_nome.strip(),
-        participante_cpf=cpf_clean
-    ).exists()
-    if dup:
-        raise ValidationError("Este participante já está matriculado nesta turma.")
-
-    m = Matricula.objects.create(
+    obj = Matricula.objects.create(
         turma_id=turma_id,
         cliente_id=cliente_id,
         data_inicio=data_inicio,
-        participante_nome=participante_nome.strip(),
-        participante_cpf=cpf_clean,
-        participante_sexo=(participante_sexo or "").upper()[:1],
         ativa=True,
+        participante_nome=p_nome,
+        participante_cpf=p_cpf,
+        participante_sexo=p_sexo,
     )
-
-    try:
-        from notificacoes.emails import send_matricula_resumo
-        #send_matricula_resumo(m)
-    except Exception as e:
-        # opcional: logue isso; por hora, só não interrompe o fluxo
-        print("Falha ao enviar e-mail de matrícula:", e)
-
-    return m
+    return obj
 
 
 @transaction.atomic
-def desmatricular(matricula_id: int, data_fim: Optional[date] = None):
-    m = Matricula.objects.filter(id=matricula_id, ativa=True).first()
+def desmatricular(matricula_id: int):
+    try:
+        from .models import Matricula
+    except Exception as e:
+        raise ValidationError("Desmatrícula indisponível neste projeto.") from e
+
+    m = Matricula.objects.filter(id=matricula_id).first()
     if not m:
-        raise ObjectDoesNotExist("Matrícula não encontrada/ativa.")
+        raise ObjectDoesNotExist("Matrícula não encontrada.")
     m.ativa = False
-    if data_fim:
-        m.data_fim = data_fim
-    m.save(update_fields=["ativa", "data_fim"])
+    m.save(update_fields=["ativa"])
+    return m
 
-def alunos_da_turma(turma_id: int):
-    """
-    Retorna matrículas ativas ordenadas por nome (do participante se houver).
-    """
-    qs = (
-        Matricula.objects
-        .select_related("cliente")
-        .filter(turma_id=turma_id, ativa=True)
-        .order_by("participante_nome", "cliente__nome_razao", "id")
-    )
-    return qs
+# ------------------------------------------------------------
+# Busca / Exportação
+# ------------------------------------------------------------
 
-# =========================
-# EXPORT BÁSICO (opcional)
-# =========================
-def exportar_turmas_excel(qs=None):
-    from openpyxl import Workbook
+def buscar_turmas(
+    *,
+    q: str = "",
+    condominio_id: Optional[int] = None,
+    modalidade_id: Optional[int] = None,
+    professor_id: Optional[int] = None,
+    dia_semana: Optional[int] = None,  # 1..7
+    ativos: Optional[bool] = None,
+) -> QuerySet[Turma]:
+    """
+    Agora condominio vem de modalidade. Mantemos filtro por condominio (via modalidade__condominio_id).
+    """
+    qs = Turma.objects.select_related("modalidade__condominio", "professor").all()
+
+    if q:
+        qs = qs.filter(
+            Q(nome_exibicao__icontains=q) |
+            Q(modalidade__nome__icontains=q) |
+            Q(modalidade__condominio__nome__icontains=q) |
+            Q(professor__nome__icontains=q)
+        )
+
+    if condominio_id:
+        qs = qs.filter(modalidade__condominio_id=condominio_id)
+
+    if modalidade_id:
+        qs = qs.filter(modalidade_id=modalidade_id)
+
+    if professor_id:
+        qs = qs.filter(professor_id=professor_id)
+
+    if dia_semana not in (None, ""):
+        try:
+            field = _DIA_FIELD[int(dia_semana)]
+            qs = qs.filter(**{field: True})
+        except Exception:
+            pass
+
+    if ativos is not None:
+        qs = qs.filter(ativo=bool(ativos))
+
+    return qs.order_by("modalidade__condominio__nome", "modalidade__nome", "hora_inicio", "id")
+
+def exportar_turmas_excel(qs: Optional[QuerySet[Turma]] = None) -> Tuple[str, bytes]:
     from io import BytesIO
-    qs = qs or Turma.objects.select_related("modalidade","condominio","professor").all()
-    wb = Workbook(); ws = wb.active; ws.title = "Turmas"
-    ws.append(["ID","Modalidade","Condomínio","Professor","Dia","Hora","Duração(min)","Capacidade","Valor","Ativa","Vigência Início","Vigência Fim","Nome"])
+    from openpyxl import Workbook
+    from openpyxl.utils import get_column_letter
+    from datetime import datetime
+
+    qs = qs or Turma.objects.select_related("modalidade__condominio", "professor").all()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Turmas"
+
+    headers = [
+        "ID", "Modalidade", "Condomínio", "Professor", "Dias", "Hora Início",
+        "Duração (min)", "Capacidade", "Valor", "Ativa", "Início Vigência", "Fim Vigência", "Nome Exibição"
+    ]
+    ws.append(headers)
+
     for t in qs:
+        dias = ", ".join(_dias_ativos_from_obj(t)) or "—"
         ws.append([
-            t.id, t.modalidade.nome, t.condominio.nome, t.professor.nome,
-            t.get_dia_semana_display(), t.hora_inicio.strftime("%H:%M"), t.duracao_minutos,
-            t.capacidade, f"{t.valor:.2f}", "SIM" if t.ativo else "NÃO",
-            t.inicio_vigencia.isoformat(), t.fim_vigencia.isoformat() if t.fim_vigencia else "",
+            t.id,
+            getattr(t.modalidade, "nome", ""),
+            getattr(getattr(t.modalidade, "condominio", None), "nome", ""),
+            getattr(t.professor, "nome", ""),
+            dias,
+            t.hora_inicio.strftime("%H:%M"),
+            t.duracao_minutos,
+            t.capacidade,
+            f"{getattr(t, 'valor', Decimal('0.00')):.2f}",
+            "SIM" if t.ativo else "NÃO",
+            t.inicio_vigencia.isoformat(),
+            t.fim_vigencia.isoformat() if t.fim_vigencia else "",
             t.nome_exibicao or "",
         ])
-    bio = BytesIO(); wb.save(bio); bio.seek(0)
-    return "turmas.xlsx", bio.read()
 
+    for col in range(1, ws.max_column + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 22
 
-# turmas/services.py (substitua a função inteira)
-
-from django.db.models.functions import Coalesce
-from django.db.models import Value as V
-
-def alunos_da_turma(turma_id: int):
-    """
-    Retorna matrículas (ativas) ordenadas pelo nome do participante (se houver) ou do cliente.
-    """
-    qs = (
-        Matricula.objects
-        .select_related("cliente")
-        .filter(turma_id=turma_id, ativa=True)
-        .annotate(
-            nome_ord=Coalesce("participante_nome", "cliente__nome_razao"),
-            doc_ord=Coalesce("participante_cpf", "cliente__cpf_cnpj"),
-        )
-        .order_by("nome_ord", "id")
-    )
-    return qs
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    filename = f"turmas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return filename, bio.read()

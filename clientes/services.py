@@ -89,6 +89,7 @@ def criar_cliente(data: dict) -> Cliente:
 
 @transaction.atomic
 def atualizar_cliente(cliente_id: int, data: dict) -> Cliente:
+    print('atualizando cliente')
     c = Cliente.objects.filter(id=cliente_id).first()
     if not c:
         raise ObjectDoesNotExist("Cliente não encontrado.")
@@ -197,39 +198,67 @@ def exportar_excel(queryset=None) -> tuple[str, bytes]:
     filename = f"clientes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     return filename, bio.read()
 
+# services.py
+from datetime import timedelta
+from django.utils import timezone
+from django.conf import settings
+from django.urls import reverse
+import secrets
 
+ACEITE_TTL_DIAS = 7
 
-
-def gerar_link_aceite(cliente: Cliente) -> str:
+def gerar_link_aceite(cliente) -> str:
     token = secrets.token_urlsafe(32)
-    cliente.contrato_token = token
-    cliente.contrato_token_expira_em = timezone.now() + timedelta(days=14)
-    cliente.save(update_fields=["contrato_token","contrato_token_expira_em"])
-    base = getattr(settings, "SITE_URL", "http://127.0.0.1:8000")
+    cliente.aceite_token = token
+    cliente.aceite_expires_at = timezone.now() + timedelta(days=ACEITE_TTL_DIAS)
+    cliente.save(update_fields=["aceite_token", "aceite_expires_at"])
+    base = getattr(settings, "SITE_URL", "http://127.0.0.1:8000").rstrip("/")
     path = reverse("clientes:aceite", args=[token])
     return f"{base}{path}"
 
-from django.urls import reverse
+# services.py (trecho)
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
 from django.conf import settings
 
 def _build_abs_url(request, url_path: str) -> str:
-    # se tiver sites framework ou SITE_URL no settings, use isso:
+    """
+    Monta URL absoluta de forma robusta.
+    1) Se houver request: usa build_absolute_uri (respeita host/https).
+    2) Senão: usa settings.SITE_URL como base.
+    """
+    if request is not None:
+        # Garante path absoluto mesmo que passem uma URL relativa
+        return request.build_absolute_uri(url_path)
+
     base = getattr(settings, "SITE_URL", "").rstrip("/")
+    if not base:
+        # fallback explícito para não quebrar (melhor configurar SITE_URL!)
+        base = "http://127.0.0.1:8000"
     return f"{base}{url_path}"
 
-def enviar_email_aceite(cliente: Cliente):
-    if not cliente.aceite_token:
+
+
+def enviar_email_aceite(cliente, request=None):
+    token = getattr(cliente, "aceite_token", None)
+    if not token:
         return
-    path = reverse("clientes:aceite", args=[cliente.aceite_token])  # /clientes/aceite/<token>/
-    url = _build_abs_url(None, path)
 
-    # Render do e-mail (HTML e/ou texto)
-    # Ex.: usar render_to_string com context contendo cliente e url
-    # subject = "Confirme sua matrícula"
-    # to = [cliente.email]
-    # send_mail(subject, plain_text_body, from_email, to, html_message=html_body)
-    # -> Reaproveite o que você já tem, apenas garanta que o template inclui {{ url }}
+    path_confirm = reverse("clientes:aceite_confirmar", args=[token])
+    link_confirm = _build_abs_url(request, path_confirm)  # << usa a função robusta
 
+    ctx = {"cliente": cliente, "link_confirm": link_confirm, "expira_em": cliente.aceite_expires_at}
+    html = render_to_string("clientes/email_aceite.html", ctx)
+    plain = strip_tags(html)
+    send_mail(
+        subject="Confirme seu contrato",
+        message=plain,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[cliente.email],
+        html_message=html,
+        fail_silently=False,
+    )
 
 
 

@@ -1,17 +1,17 @@
 from __future__ import annotations
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Iterable, Tuple
 from datetime import date, timedelta
 from decimal import Decimal
+from calendar import monthrange
 
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.db import transaction
-from django.db.models import Q, Sum
-from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.db.models import Q, Sum, F
 
-from .models import Lancamento, Baixa, CategoriaFinanceira
-
+from .models import Lancamento, Baixa, CategoriaFinanceira  # financeiro
 # ===== Helpers =====
 def paginar_queryset(qs, page: int = 1, per_page: int = 20):
+    from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
     p = Paginator(qs, per_page)
     try:
         return p.page(page)
@@ -130,12 +130,10 @@ def buscar_lancamentos(
     if categoria_id: qs = qs.filter(categoria_id=categoria_id)
     if ativos is not None: qs = qs.filter(ativo=ativos)
 
-    # Anota total baixado/saldo
     qs = qs.annotate(total_baixado_agg=Sum("baixas__valor")).order_by("-vencimento", "-id")
-
     return qs
 
-# ===== Recorrência mensal =====
+# ===== Recorrência mensal (manual) =====
 @transaction.atomic
 def gerar_recorrencia_mensal(
     *,
@@ -165,8 +163,7 @@ def gerar_recorrencia_mensal(
     mes = primeiro_mes.month
 
     from calendar import monthrange
-    for i in range(quantidade):
-        # calcula vencimento com clamp do dia (ex.: dia 31 em fev => vai para último dia do mês)
+    for _ in range(quantidade):
         last_day = monthrange(ano, mes)[1]
         dia = min(dia_venc, last_day)
         venc = date(ano, mes, dia)
@@ -241,15 +238,9 @@ def exportar_lancamentos_excel(queryset=None) -> tuple[str, bytes]:
     filename = f"financeiro_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     return filename, bio.read()
 
-# === Cobranças de Mensalidades (por Turma / Global) ===
-from calendar import monthrange
+# === Cobranças de Mensalidades (AGORA agregadas por CLIENTE) ===
 from datetime import date as _date
-from decimal import Decimal
-from django.db import transaction
-from django.db.models import Q
-
 from turmas.models import Turma, Matricula
-from .models import Lancamento, CategoriaFinanceira
 
 def _primeiro_ultimo_dia(ano: int, mes: int) -> tuple[_date, _date]:
     last = monthrange(ano, mes)[1]
@@ -259,29 +250,80 @@ def _clamp_vencimento(ano: int, mes: int, dia_venc: int) -> _date:
     last = monthrange(ano, mes)[1]
     return _date(ano, mes, min(dia_venc, last))
 
-def _matriculas_ativas_no_mes(turma: Turma, ano: int, mes: int):
-    """Matrículas com 'ativa=True' e que cruzam o mês (qualquer dia)."""
+def _matriculas_ativas_no_mes_global(ano: int, mes: int):
+    """Todas matrículas ativas que cruzam a competência (qualquer dia no mês)."""
     inicio_mes, fim_mes = _primeiro_ultimo_dia(ano, mes)
     return (Matricula.objects
-            .select_related("cliente")
+            .select_related("cliente", "turma", "turma__modalidade", "turma__condominio")
+            .filter(ativa=True)
+            .filter(Q(data_fim__isnull=True) | Q(data_fim__gte=inicio_mes))
+            .filter(data_inicio__lte=fim_mes))
+
+def _matriculas_ativas_no_mes_da_turma(turma: Turma, ano: int, mes: int):
+    """Matrículas ativas no mês, apenas da turma informada."""
+    inicio_mes, fim_mes = _primeiro_ultimo_dia(ano, mes)
+    return (Matricula.objects
+            .select_related("cliente", "turma", "turma__modalidade", "turma__condominio")
             .filter(turma=turma, ativa=True)
             .filter(Q(data_fim__isnull=True) | Q(data_fim__gte=inicio_mes))
-            .filter(data_inicio__lte=fim_mes)
-            .order_by("cliente__nome_razao", "id"))
+            .filter(data_inicio__lte=fim_mes))
 
 def _get_or_create_categoria(nome: str = "Mensalidades") -> CategoriaFinanceira:
     cat, _ = CategoriaFinanceira.objects.get_or_create(nome=nome)
     return cat
 
-def _ja_existe_cobranca(cliente_id: int, turma_id: int, ano: int, mes: int) -> bool:
-    """Evita duplicidade por (cliente, turma, mês). Ignora CANCELADO."""
+def _ja_existe_cobranca_cliente_mes(cliente_id: int, ano: int, mes: int) -> bool:
+    """Evita duplicidade por (cliente, mês). Ignora CANCELADO."""
     return Lancamento.objects.filter(
         tipo="RECEBER",
         cliente_id=cliente_id,
-        turma_id=turma_id,
         vencimento__year=ano,
         vencimento__month=mes
     ).exclude(status="CANCELADO").exists()
+
+def _desconto_percent_por_modalidades(qtd_modalidades: int) -> Decimal:
+    if qtd_modalidades >= 4:
+        return Decimal("0.10")
+    if qtd_modalidades == 3:
+        return Decimal("0.075")
+    if qtd_modalidades == 2:
+        return Decimal("0.05")
+    return Decimal("0.00")
+
+def _agrupar_totais_por_cliente(mats: Iterable[Matricula]) -> Dict[int, Dict[str, Any]]:
+    """
+    Retorna um dict:
+      { cliente_id: {
+            "cliente": <obj>,
+            "modalidades": { modalidade_id: {"nome": str, "qtd": int, "valor_unit": Decimal} },
+            "subtotal": Decimal,
+            "qtd_modalidades": int
+        }}
+    """
+    grouped: Dict[int, Dict[str, Any]] = {}
+    for m in mats:
+        cid = m.cliente_id
+        t = m.turma
+        mod = t.modalidade
+        valor_unit = Decimal(t.valor)  # valor da modalidade (na turma)
+        entry = grouped.setdefault(cid, {
+            "cliente": m.cliente,
+            "modalidades": {},  # por modalidade
+            "subtotal": Decimal("0.00"),
+            "qtd_modalidades": 0,
+        })
+        mod_entry = entry["modalidades"].setdefault(mod.id, {"nome": mod.nome, "qtd": 0, "valor_unit": valor_unit})
+        mod_entry["qtd"] += 1
+    # calcula subtotais e contagem de modalidades
+    for cid, entry in grouped.items():
+        subtotal = Decimal("0.00")
+        modalidade_ids = []
+        for mid, info in entry["modalidades"].items():
+            modalidade_ids.append(mid)
+            subtotal += Decimal(info["qtd"]) * Decimal(info["valor_unit"])
+        entry["subtotal"] = subtotal
+        entry["qtd_modalidades"] = len(set(modalidade_ids))
+    return grouped
 
 @transaction.atomic
 def gerar_cobrancas_mensalidade_turma(
@@ -291,50 +333,71 @@ def gerar_cobrancas_mensalidade_turma(
     mes: int,
     dia_venc: int = 5,
     categoria_nome: str = "Mensalidades",
-    descricao_tpl: str = "Mensalidade {modalidade} - {condominio} ({mes:02d}/{ano})",
-    observacao_padrao: str = "Gerado automaticamente por turma",
+    descricao_tpl: str = "Mensalidades ({mes:02d}/{ano})",
+    observacao_padrao: str = "Gerado automaticamente por turma (agregado por cliente)",
 ) -> dict:
     """
-    Gera 'A RECEBER' para cada matrícula ativa no mês (sem pró-rata).
+    Agora cria UMA cobrança por cliente (no mês), considerando TODAS as suas matrículas
+    ativas no mês (não apenas desta turma) — para evitar múltiplas cobranças separadas.
+    Se já existir cobrança daquele cliente no mês, não cria novamente.
     Retorna: {"criados": X, "existentes": Y, "turma": turma_id, "vencimento": date}
     """
     turma = Turma.objects.select_related("modalidade", "condominio").filter(id=turma_id, ativo=True).first()
     if not turma:
         raise ValueError("Turma não encontrada ou inativa.")
 
-    # opcional: se mês totalmente fora da vigência, apenas não cria nada
+    # se mês fora da vigência da turma, não cria nada (consistente com antes)
     inicio_mes, fim_mes = _primeiro_ultimo_dia(ano, mes)
     if not (turma.inicio_vigencia <= fim_mes and (turma.fim_vigencia is None or turma.fim_vigencia >= inicio_mes)):
         return {"criados": 0, "existentes": 0, "turma": turma_id, "vencimento": None}
 
     cat = _get_or_create_categoria(categoria_nome)
     venc = _clamp_vencimento(ano, mes, dia_venc)
-    descricao_base = descricao_tpl.format(
-        modalidade=turma.modalidade.nome,
-        condominio=turma.condominio.nome,
-        ano=ano, mes=mes
-    )
+
+    # clientes que têm matrícula nesta turma (no mês)
+    clientes_ids = set(m.cliente_id for m in _matriculas_ativas_no_mes_da_turma(turma, ano, mes))
+
+    # mas a cobrança é pelo conjunto de TODAS as matrículas do cliente (no mês)
+    mats_todas = _matriculas_ativas_no_mes_global(ano, mes).filter(cliente_id__in=clientes_ids)
+
+    por_cliente = _agrupar_totais_por_cliente(mats_todas)
 
     criados = existentes = 0
-    valor = Decimal(turma.valor)  # assume DecimalField
-
-    for m in _matriculas_ativas_no_mes(turma, ano, mes):
-        if _ja_existe_cobranca(m.cliente_id, turma.id, ano, mes):
+    for cid, dados in por_cliente.items():
+        if _ja_existe_cobranca_cliente_mes(cid, ano, mes):
             existentes += 1
             continue
 
+        subtotal = dados["subtotal"]
+        qtd_modalidades = dados["qtd_modalidades"]
+        desc_pct = _desconto_percent_por_modalidades(qtd_modalidades)
+        desconto = (subtotal * desc_pct).quantize(Decimal("0.01"))
+        total = (subtotal - desconto).quantize(Decimal("0.01"))
+
+        cliente = dados["cliente"]
+        descricao = descricao_tpl.format(ano=ano, mes=mes)
+
+        # Observação com breakdown
+        parts = []
+        for info in dados["modalidades"].values():
+            parts.append(f"{info['nome']} x{info['qtd']} @ {Decimal(info['valor_unit']):.2f}")
+        breakdown = "; ".join(parts)
+        obs = (f"{observacao_padrao}. competência={ano}-{mes:02d}; "
+               f"modalidades={qtd_modalidades}; desconto={desc_pct*Decimal('100')}%; "
+               f"itens=[{breakdown}]")
+
         Lancamento.objects.create(
             tipo="RECEBER",
-            descricao=f"{descricao_base} — {m.cliente.nome_razao}",
-            valor=valor,
+            descricao=f"{descricao} — {cliente.nome_razao}",
+            valor=total,
             vencimento=venc,
             status="ABERTO",
-            cliente_id=m.cliente_id,
-            turma_id=turma.id,
+            cliente_id=cid,
+            turma_id=None,  # agregado por cliente (não por turma)
             categoria_id=cat.id,
-            observacao=f"{observacao_padrao}. competência={ano}-{mes:02d}; turma_id={turma.id}; matricula_id={m.id}",
-            contraparte_nome=m.cliente.nome_razao,
-            contraparte_doc=m.cliente.cpf_cnpj,
+            observacao=obs,
+            contraparte_nome=cliente.nome_razao,
+            contraparte_doc=cliente.cpf_cnpj,
         )
         criados += 1
 
@@ -347,24 +410,56 @@ def gerar_cobrancas_mensalidades_global(
     mes: int,
     dia_venc: int = 5,
     categoria_nome: str = "Mensalidades",
-    descricao_tpl: str = "Mensalidade {modalidade} - {condominio} ({mes:02d}/{ano})",
-    observacao_padrao: str = "Gerado automaticamente (global)",
+    descricao_tpl: str = "Mensalidades ({mes:02d}/{ano})",
+    observacao_padrao: str = "Gerado automaticamente (global, agregado por cliente)",
 ) -> dict:
     """
-    Gera cobranças para TODAS as turmas ativas que tenham vigência no mês.
-    Retorna agregados por total.
+    Cria UMA cobrança por cliente (no mês), considerando TODAS as matrículas ativas.
+    Se já existir cobrança daquele cliente no mês, não cria novamente.
+    Retorna: {"criados": X, "existentes": Y, "ano": ano, "mes": mes, "dia_venc": dia_venc}
     """
-    total_criados = total_existentes = 0
-    turmas = Turma.objects.select_related("modalidade", "condominio").filter(ativo=True)
+    cat = _get_or_create_categoria(categoria_nome)
+    venc = _clamp_vencimento(ano, mes, dia_venc)
 
-    for t in turmas:
-        rel = gerar_cobrancas_mensalidade_turma(
-            turma_id=t.id, ano=ano, mes=mes, dia_venc=dia_venc,
-            categoria_nome=categoria_nome,
-            descricao_tpl=descricao_tpl,
-            observacao_padrao=observacao_padrao,
+    mats = _matriculas_ativas_no_mes_global(ano, mes)
+    por_cliente = _agrupar_totais_por_cliente(mats)
+
+    criados = existentes = 0
+    for cid, dados in por_cliente.items():
+        if _ja_existe_cobranca_cliente_mes(cid, ano, mes):
+            existentes += 1
+            continue
+
+        subtotal = dados["subtotal"]
+        qtd_modalidades = dados["qtd_modalidades"]
+        desc_pct = _desconto_percent_por_modalidades(qtd_modalidades)
+        desconto = (subtotal * desc_pct).quantize(Decimal("0.01"))
+        total = (subtotal - desconto).quantize(Decimal("0.01"))
+
+        cliente = dados["cliente"]
+        descricao = descricao_tpl.format(ano=ano, mes=mes)
+
+        parts = []
+        for info in dados["modalidades"].values():
+            parts.append(f"{info['nome']} x{info['qtd']} @ {Decimal(info['valor_unit']):.2f}")
+        breakdown = "; ".join(parts)
+        obs = (f"{observacao_padrao}. competência={ano}-{mes:02d}; "
+               f"modalidades={qtd_modalidades}; desconto={desc_pct*Decimal('100')}%; "
+               f"itens=[{breakdown}]")
+
+        Lancamento.objects.create(
+            tipo="RECEBER",
+            descricao=f"{descricao} — {cliente.nome_razao}",
+            valor=total,
+            vencimento=venc,
+            status="ABERTO",
+            cliente_id=cid,
+            turma_id=None,
+            categoria_id=cat.id,
+            observacao=obs,
+            contraparte_nome=cliente.nome_razao,
+            contraparte_doc=cliente.cpf_cnpj,
         )
-        total_criados += rel["criados"]
-        total_existentes += rel["existentes"]
+        criados += 1
 
-    return {"criados": total_criados, "existentes": total_existentes, "ano": ano, "mes": mes, "dia_venc": dia_venc}
+    return {"criados": criados, "existentes": existentes, "ano": ano, "mes": mes, "dia_venc": dia_venc}

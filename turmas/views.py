@@ -1,357 +1,295 @@
-# turmas/views.py
 from __future__ import annotations
 from typing import Optional
-from datetime import date
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
+from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import render, redirect
 from django.urls import reverse
-from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest
-from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.views.decorators.http import require_POST
 
+from .forms import TurmaForm
 from .models import Turma
 from . import services as ts
-from .forms import TurmaForm, TurmaFiltroForm, MatriculaForm
 
-from clientes.models import Cliente
-from condominios.models import Condominio
 from modalidades.models import Modalidade
-from funcionarios.models import Funcionario  # professor
+from funcionarios.models import Funcionario
+try:
+    from clientes.models import Cliente
+except Exception:
+    Cliente = None
 
-# ============== Helpers ==============
+DIAS_SEMANA = (
+    (1, "Segunda"),
+    (2, "Terça"),
+    (3, "Quarta"),
+    (4, "Quinta"),
+    (5, "Sexta"),
+    (6, "Sábado"),
+    (7, "Domingo"),
+)
 
-def _paginate(qs, page: int, per_page: int = 20):
-    p = Paginator(qs, per_page)
-    try:
-        return p.page(page)
-    except PageNotAnInteger:
-        return p.page(1)
-    except EmptyPage:
-        return p.page(p.num_pages if page > 1 else 1)
-
-# ============== Views ==============
+# ------------------------------------------------------------
+# Listagem
+# ------------------------------------------------------------
 
 @login_required
-def list_turmas(request: HttpRequest):
-    # filtros
-    filtro = TurmaFiltroForm(request.GET or None)
-    cd = filtro.cleaned_data if filtro.is_valid() else {}
-
-    q = cd.get("q", "")
-    condominio_id = int(cd["condominio"]) if cd.get("condominio") else None
-    modalidade_id = int(cd["modalidade"]) if cd.get("modalidade") else None
-    professor_id = int(cd["professor"]) if cd.get("professor") else None
-    dia_semana = cd.get("dia_semana")
-    ativos = None if cd.get("ativos") in ("", None) else (cd.get("ativos") == "1")
+def list_turmas(request: HttpRequest) -> HttpResponse:
+    q = (request.GET.get("q") or "").strip()
+    condominio_id = request.GET.get("condominio") or ""
+    modalidade_id = request.GET.get("modalidade") or ""
+    professor_id  = request.GET.get("professor") or ""
+    dia_param     = request.GET.get("dia_semana") or ""
+    ativos_param  = request.GET.get("ativos", "")
 
     qs = ts.buscar_turmas(
         q=q,
-        condominio_id=condominio_id,
-        modalidade_id=modalidade_id,
-        professor_id=professor_id,
-        dia_semana=dia_semana if dia_semana != "" else None,
-        ativos=ativos,
+        condominio_id=int(condominio_id) if condominio_id else None,
+        modalidade_id=int(modalidade_id) if modalidade_id else None,
+        professor_id=int(professor_id) if professor_id else None,
+        dia_semana=int(dia_param) if dia_param else None,
+        ativos=(None if ativos_param == "" else (ativos_param == "1")),
     )
 
-    # paginação
-    page_str = request.GET.get("page", "1")
+    page = max(1, int(request.GET.get("page", "1") or 1))
+    page_obj = Paginator(qs, 20).get_page(page)
+
+    # combos de filtro
     try:
-        page = max(1, int(page_str))
+        from condominios.models import Condominio
+        condominios = Condominio.objects.filter(modalidade__isnull=False).distinct()
     except Exception:
-        page = 1
-    page_obj = _paginate(qs, page=page, per_page=20)
+        condominios = []
 
-    # parâmetros auxiliares para template
-    qd = request.GET.copy(); qd.pop("page", None)
-    base_qs = qd.urlencode()
-    suffix = f"&{base_qs}" if base_qs else ""
+    modalidades = Modalidade.objects.all().order_by("nome")
+    professores = Funcionario.objects.filter(ativo=True).order_by("nome")
 
-    # combos
-    condominios = Condominio.objects.order_by("nome")
-    modalidades = Modalidade.objects.order_by("nome")
-    professores = Funcionario.objects.filter(ativo=True, cargo__icontains="prof").order_by("nome") if hasattr(Funcionario, "cargo") else Funcionario.objects.filter(ativo=True).order_by("nome")
-    # clientes (para o modal de matrícula) - limitar por performance
-    clientes = Cliente.objects.filter(ativo=True).order_by("nome_razao")[:500]
+    # clientes para o modal de matrícula (limite 500)
+    clientes = []
+    if Cliente is not None:
+        clientes = Cliente.objects.filter(ativo=True).order_by("nome_razao")[:500]
 
-    context = {
-        "filtro_form": filtro,
+    # sufixo para manter filtros
+    def _v(v: str) -> str:
+        return v if v is not None else ""
+    base_qs = f"q={_v(q)}&condominio={_v(condominio_id)}&modalidade={_v(modalidade_id)}&professor={_v(professor_id)}&dia_semana={_v(dia_param)}&ativos={_v(ativos_param)}"
+    suffix = "&" + base_qs if base_qs else ""
+
+    ctx = {
         "page_obj": page_obj,
-        "base_qs": base_qs,
-        "suffix": suffix,
+        "filtro_form": {"initial": {"q": q}},
+        "q": q,
+        "condominio_id": str(condominio_id),
+        "modalidade_id": str(modalidade_id),
+        "professor_id": str(professor_id),
+        "dia_param": str(dia_param),
+        "ativos_param": ativos_param,
+        "DIAS_SEMANA": DIAS_SEMANA,
+
         "condominios": condominios,
         "modalidades": modalidades,
         "professores": professores,
         "clientes": clientes,
-        "DIAS_SEMANA": Turma.DIAS_SEMANA if hasattr(Turma, "DIAS_SEMANA") else [(0,"Seg"),(1,"Ter"),(2,"Qua"),(3,"Qui"),(4,"Sex"),(5,"Sáb"),(6,"Dom")],
-        # usados no template para manter 'selected'
-        "condominio_id": request.GET.get("condominio",""),
-        "modalidade_id": request.GET.get("modalidade",""),
-        "professor_id": request.GET.get("professor",""),
-        "dia_param": request.GET.get("dia_semana",""),
-        "ativos_param": request.GET.get("ativos",""),
+
+        "base_qs": base_qs,
+        "suffix": suffix,
     }
-    return render(request, "turmas/list.html", context)
+    return render(request, "turmas/list.html", ctx)
+
+# ------------------------------------------------------------
+# Create / Update
+# ------------------------------------------------------------
 
 @login_required
-def create_turma(request: HttpRequest):
-    if request.method != "POST":
-        return HttpResponseBadRequest("Somente POST.")
-    form = TurmaForm(request.POST)
+@require_POST
+def create_turma(request: HttpRequest) -> HttpResponse:
+    form = TurmaForm(request.POST or None)
     if not form.is_valid():
-        messages.error(request, f"Dados inválidos: {form.errors}")
+        messages.error(request, "Erro ao validar a turma: " + "; ".join([f"{k}: {', '.join(v)}" for k, v in form.errors.items()]))
         return redirect(reverse("turmas:list"))
     try:
         ts.criar_turma(form.cleaned_data)
-        messages.success(request, "Turma criada.")
+    except ValidationError as e:
+        messages.error(request, f"Não foi possível criar a turma: {e}")
     except Exception as e:
-        messages.error(request, f"Erro ao criar turma: {e}")
+        messages.error(request, f"Erro interno ao criar a turma: {e}")
+    else:
+        messages.success(request, "Turma criada com sucesso.")
     return redirect(reverse("turmas:list"))
 
 @login_required
-def update_turma(request: HttpRequest, pk: int):
-    if request.method != "POST":
-        return HttpResponseBadRequest("Somente POST.")
-    form = TurmaForm(request.POST)
+@require_POST
+def update_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
+    form = TurmaForm(request.POST or None)
     if not form.is_valid():
-        messages.error(request, f"Dados inválidos: {form.errors}")
+        messages.error(request, "Erro ao validar a turma: " + "; ".join([f"{k}: {', '.join(v)}" for k, v in form.errors.items()]))
         return redirect(reverse("turmas:list"))
     try:
-        ts.atualizar_turma(pk, form.cleaned_data)
-        messages.success(request, "Turma atualizada.")
+        ts.atualizar_turma(turma_id, form.cleaned_data)
+    except ValidationError as e:
+        messages.error(request, f"Não foi possível atualizar a turma: {e}")
     except Exception as e:
-        messages.error(request, f"Erro ao atualizar turma: {e}")
+        messages.error(request, f"Erro interno ao atualizar a turma: {e}")
+    else:
+        messages.success(request, "Turma atualizada com sucesso.")
     return redirect(reverse("turmas:list"))
 
-@login_required
-def alunos_turma(request: HttpRequest, turma_id: int):
-    turma = Turma.objects.select_related("modalidade","condominio","professor").filter(id=turma_id).first()
-    if not turma:
-        messages.error(request, "Turma não encontrada.")
-        return redirect(reverse("turmas:list"))
-    alunos = ts.alunos_da_turma(turma_id)
-    return render(request, "turmas/alunos.html", {"turma": turma, "alunos": alunos})
-
-# turmas/views.py (substitua sua matricular_view por esta versão que respeita 'next')
-@login_required
-def matricular_view(request: HttpRequest):
-    if request.method != "POST":
-        return HttpResponseBadRequest("Somente POST.")
-    form = MatriculaForm(request.POST)
-    next_url = request.POST.get("next")  # <- aqui
-    if not form.is_valid():
-        messages.error(request, f"Dados inválidos: {form.errors}")
-        return redirect(next_url or reverse("turmas:list"))
-
-    cd = form.cleaned_data
-    try:
-        ts.matricular_cliente(
-            turma_id=cd["turma_id"],
-            cliente_id=cd["cliente"],
-            data_inicio=cd["data_inicio"],
-            participante_nome=cd.get("participante_nome",""),
-            participante_cpf=cd.get("participante_cpf",""),
-            participante_sexo=cd.get("participante_sexo",""),
-        )
-        messages.success(request, "Matrícula realizada.")
-    except Exception as e:
-        messages.error(request, f"Falha ao matricular: {e}")
-    return redirect(next_url or reverse("turmas:list"))  # <- volta para onde veio
-
+# ------------------------------------------------------------
+# Exportação
+# ------------------------------------------------------------
 
 @login_required
-def exportar_view(request: HttpRequest):
+def exportar_turmas(request: HttpRequest) -> HttpResponse:
+    q = (request.GET.get("q") or "").strip()
+    condominio_id = request.GET.get("condominio") or ""
+    modalidade_id = request.GET.get("modalidade") or ""
+    professor_id  = request.GET.get("professor") or ""
+    dia_param     = request.GET.get("dia_semana") or ""
+    ativos_param  = request.GET.get("ativos", "")
+
     qs = ts.buscar_turmas(
-        q=request.GET.get("q",""),
-        condominio_id=int(request.GET.get("condominio")) if request.GET.get("condominio") else None,
-        modalidade_id=int(request.GET.get("modalidade")) if request.GET.get("modalidade") else None,
-        professor_id=int(request.GET.get("professor")) if request.GET.get("professor") else None,
-        dia_semana=int(request.GET.get("dia_semana")) if request.GET.get("dia_semana","") != "" else None,
-        ativos=(None if request.GET.get("ativos","") == "" else request.GET.get("ativos")=="1"),
+        q=q,
+        condominio_id=int(condominio_id) if condominio_id else None,
+        modalidade_id=int(modalidade_id) if modalidade_id else None,
+        professor_id=int(professor_id) if professor_id else None,
+        dia_semana=int(dia_param) if dia_param else None,
+        ativos=(None if ativos_param == "" else (ativos_param == "1")),
     )
+
     filename, content = ts.exportar_turmas_excel(qs)
     resp = HttpResponse(content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+    resp["Content-Disposition"] = f'attachment; filename=\"{filename}\"'
     return resp
 
-
-# turmas/views.py (substitua/atualize estas duas views)
-
-from django.utils.timezone import now
+# ------------------------------------------------------------
+# Alunos da turma (link da listagem)
+# ------------------------------------------------------------
 
 @login_required
-def alunos_turma(request: HttpRequest, turma_id: int):
-    turma = Turma.objects.select_related("modalidade","condominio","professor").filter(id=turma_id).first()
+def alunos_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
+    turma = (
+        Turma.objects
+        .select_related("modalidade__condominio", "professor")
+        .filter(id=turma_id)
+        .first()
+    )
     if not turma:
         messages.error(request, "Turma não encontrada.")
         return redirect(reverse("turmas:list"))
 
-    qs = ts.alunos_da_turma(turma_id)
-
-    # paginação
-    page_str = request.GET.get("page", "1")
     try:
-        page = max(1, int(page_str))
+        from .models import Matricula
+        alunos = (
+                turma.matriculas
+                    .select_related("cliente")
+                    .filter(ativa=True)
+                    .order_by("cliente__nome_razao")
+            )
     except Exception:
-        page = 1
-    page_obj = _paginate(qs, page=page, per_page=30)
+        alunos = []
 
-    # métricas simples
-    ocupacao = getattr(turma, "ocupacao_qtd", None)
-    if ocupacao is None:
-        try:
-            ocupacao = turma.ocupacao  # property
-        except Exception:
-            ocupacao = qs.count()
+    return render(request, "turmas/alunos.html", {"turma": turma, "alunos": alunos})
 
-    context = {
-        "turma": turma,
-        "page_obj": page_obj,
-        "ocupacao": ocupacao,
-        "capacidade": turma.capacidade,
-        "vagas": max(0, turma.capacidade - ocupacao),
-        "base_qs": "", "suffix": "",  # se quiser filtros depois
-        "hoje": now().date(),
-    }
-    return render(request, "turmas/alunos.html", context)
-
+# ------------------------------------------------------------
+# Matrículas
+# ------------------------------------------------------------
 
 @login_required
-def desmatricular_view(request: HttpRequest, matricula_id: int):
-    if request.method != "POST":
-        return HttpResponseBadRequest("Somente POST.")
-    data_fim = request.POST.get("data_fim", "") or None
+@require_POST
+def matricular_view(request: HttpRequest) -> HttpResponse:
+    """
+    Recebe POST do modal de matrícula.
+    Campos esperados: turma_id, cliente, data_inicio, participante_* e "é o próprio" (chkProprioAluno no front).
+    """
     try:
-        d = None
-        if data_fim:
-            from datetime import date as _d
-            y,m,dd = [int(x) for x in data_fim.split("-")]
-            d = _d(y,m,dd)
-        # precisamos descobrir a turma para redirecionar
-        m = Matricula.objects.select_related("turma").filter(id=matricula_id, ativa=True).first()
-        if not m:
-            messages.error(request, "Matrícula não encontrada/ativa.")
+        turma_id = int(request.POST.get("turma_id") or 0)
+        cliente_id = int(request.POST.get("cliente") or 0)
+        data_inicio = request.POST.get("data_inicio")
+        participante_nome = request.POST.get("participante_nome") or ""
+        participante_cpf = request.POST.get("participante_cpf") or ""
+        participante_sexo = request.POST.get("participante_sexo") or ""
+        proprio_cliente = (request.POST.get("proprio_cliente") or request.POST.get("chkProprioAluno") or "on")
+        proprio_cliente = str(proprio_cliente).lower() in ("1", "true", "on")
+
+        print('Aq')
+        print(participante_nome, participante_cpf, participante_sexo, proprio_cliente)
+        if not turma_id or not cliente_id or not data_inicio:
+            messages.error(request, "Informe turma, cliente e data de início.")
             return redirect(reverse("turmas:list"))
-        turma_id = m.turma_id
-        ts.desmatricular(matricula_id, data_fim=d)
-        messages.success(request, "Matrícula encerrada.")
-        return redirect(reverse("turmas:alunos", args=[turma_id]))
+
+        from datetime import date as _date
+        parts = [int(x) for x in str(data_inicio).split("-")]
+        data_inicio_dt = _date(parts[0], parts[1], parts[2])
+
+        ts.matricular_cliente(
+            turma_id=turma_id,
+            cliente_id=cliente_id,
+            data_inicio=data_inicio_dt,
+            participante_nome=participante_nome,
+            participante_cpf=participante_cpf,
+            participante_sexo=participante_sexo,
+            proprio_cliente=proprio_cliente,
+        )
+    except ValidationError as e:
+        print(e)
+        messages.error(request, f"Não foi possível matricular: {e}")
     except Exception as e:
-        messages.error(request, f"Falha ao desmatricular: {e}")
-        return redirect(reverse("turmas:list"))
-
-
-
-# turmas/views.py (adicione)
-import re
-from django.db.models import Q
-from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
-from django.utils.http import urlquote
-from urllib.parse import quote
-
-from django.shortcuts import render, redirect
-from django.urls import reverse
-from django.contrib import messages
-from django.utils.timezone import localdate
-
-from clientes.models import Cliente
-from .models import Turma
-from . import services as ts
+        print(e)
+        messages.error(request, f"Erro interno ao matricular: {e}")
+    else:
+        messages.success(request, "Matrícula realizada com sucesso.")
+    return redirect(reverse("turmas:list"))
 
 @login_required
-def escolher_cliente(request, turma_id: int):
-    turma = (Turma.objects
-             .select_related("modalidade","condominio","professor")
-             .filter(id=turma_id).first())
-    if not turma:
-        messages.error(request, "Turma não encontrada.")
-        return redirect(reverse("turmas:list"))
-
-    q = (request.GET.get("q") or "").strip()
-    cpf = (request.GET.get("cpf") or "").strip()
-    ativos = request.GET.get("ativos", "1")  # padrão: só ativos
-
-    qs = Cliente.objects.all()
-    if q:
-        qs = qs.filter(Q(nome_razao__icontains=q) | Q(email__icontains=q))
-    if cpf:
-        cpf_clean = re.sub(r"\D+", "", cpf)
-        if cpf_clean:
-            qs = qs.filter(cpf_cnpj__icontains=cpf_clean)
-    if ativos in ("1","0"):
-        qs = qs.filter(ativo=(ativos == "1"))
-
-    qs = qs.order_by("nome_razao", "id")
-
-    paginator = Paginator(qs, 20)
+def desmatricular_view(request: HttpRequest, matricula_id: int) -> HttpResponse:
     try:
-        page_num = max(1, int(request.GET.get("page", "1") or "1"))
-    except Exception:
-        page_num = 1
-    page_obj = paginator.get_page(page_num)
+        ts.desmatricular(matricula_id)
+    except ValidationError as e:
+        messages.error(request, f"Não foi possível desmatricular: {e}")
+    except Exception as e:
+        messages.error(request, f"Erro interno ao desmatricular: {e}")
+    else:
+        messages.success(request, "Matrícula desativada.")
+    return redirect(reverse("turmas:list"))
 
-    base_qs = f"&q={urlquote(q)}&cpf={urlquote(cpf)}&ativos={ativos}"
-
-    return render(request, "turmas/escolher_cliente.html", {
-        "turma": turma,
-        "page_obj": page_obj,
-        "q": q,
-        "cpf": cpf,
-        "ativos": ativos,
-        "base_qs": base_qs,
-        "hoje": localdate(),
-    })
-
-# turmas/views.py (substitua a sua selecionar_cliente por esta)
-from django.utils.timezone import localdate
-from django.db.models import Q
-from django.utils.http import urlquote  # opcional
-from clientes import services as cs
-from clientes.models import Cliente
-from django.core.paginator import Paginator
+# ------------------------------------------------------------
+# Toggle Ativo/Inativo da turma
+# ------------------------------------------------------------
 
 @login_required
-def selecionar_cliente(request, turma_id: int):
-    turma = (Turma.objects
-             .select_related("modalidade","condominio","professor")
-             .filter(id=turma_id).first())
-    if not turma:
-        messages.error(request, "Turma não encontrada.")
-        return redirect(reverse("turmas:list"))
-
-    q   = (request.GET.get("q") or "").strip()
-    cpf = (request.GET.get("cpf") or "").strip()
-    page = request.GET.get("page") or "1"
+def toggle_status(request: HttpRequest, turma_id: int) -> HttpResponse:
     try:
-        page = max(1, int(page))
-    except Exception:
-        page = 1
+        ts.toggle_status(turma_id)
+    except Exception as e:
+        messages.error(request, f"Não foi possível alterar o status: {e}")
+    else:
+        messages.success(request, "Status da turma atualizado.")
+    return redirect(reverse("turmas:list"))
 
-    # usa seu service (nome/email e cpf normalizado)
-    qs = cs.buscar_clientes(q=q, ativos=True)
-    if cpf:
-        import re
-        cpf_clean = re.sub(r"\D+", "", cpf)
-        if cpf_clean:
-            qs = qs.filter(cpf_cnpj__icontains=cpf_clean)
+# ------------------------------------------------------------
+# Selecionar cliente (iframe)
+# ------------------------------------------------------------
 
-    qs = qs.only("id","nome_razao","cpf_cnpj","email").order_by("nome_razao","id")
-    paginator = Paginator(qs, 20)
-    page_obj = paginator.get_page(page)
+@login_required
+def selecionar_cliente(request: HttpRequest, turma_id: int) -> HttpResponse:
+    turma = (
+        Turma.objects
+        .select_related("modalidade__condominio", "professor")
+        .filter(id=turma_id)
+        .first()
+    )
+    if not turma:
+        return HttpResponseBadRequest("Turma inválida.")
 
-    # mantém o filtro na paginação
-    from django.http import QueryDict
-    qd = request.GET.copy()
-    qd.pop("page", None)
-    base_qs = "&" + qd.urlencode() if qd else ""
+    if Cliente is None:
+        clientes = []
+    else:
+        clientes = Cliente.objects.filter(condominio=turma.modalidade.condominio, ativo=True).order_by("nome_razao")
 
-    template = "turmas/selecionar_cliente_embed.html" if request.GET.get("embed") == "1" else "turmas/selecionar_cliente.html"
-    return render(request, template, {
+    return render(request, "turmas/selecionar_cliente.html", {
         "turma": turma,
-        "q": q,
-        "cpf": cpf,
-        "page_obj": page_obj,
-        "base_qs": base_qs,
-        "hoje": localdate(),  # use no template
+        "clientes": clientes,
+        "embed": request.GET.get("embed") == "1",
     })

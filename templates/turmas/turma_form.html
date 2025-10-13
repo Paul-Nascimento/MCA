@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if turma %}Editar Turma{% else %}Nova Turma{% endif %} | MCA{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">{% if turma %}Editar Turma{% else %}Nova Turma{% endif %}</h4>
+  <a class="btn btn-outline-secondary" href="{% url 'turmas:list' %}">
+    <i class="fa-solid fa-arrow-left"></i> Voltar
+  </a>
+</div>
+
+<form method="post" class="card">
+  {% csrf_token %}
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">Professor</label>
+        {{ form.professor }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Modalidade</label>
+        {{ form.modalidade }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Condomínio</label>
+        {{ form.condominio }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Nome (opcional)</label>
+        {{ form.nome_exibicao }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Valor</label>
+        {{ form.valor }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Capacidade</label>
+        {{ form.capacidade }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Início Vigência</label>
+        {{ form.inicio_vigencia }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Fim Vigência</label>
+        {{ form.fim_vigencia }}
+      </div>
+      <div class="col-md-3 form-check mt-4">
+        {{ form.ativo }} <label class="form-check-label ms-2">Ativa</label>
+      </div>
+    </div>
+
+    <hr class="my-4">
+
+    <h5 class="mb-2">Horários</h5>
+    <p class="text-muted">Adicione um ou mais horários semanais para esta turma.</p>
+
+    {{ formset.management_form }}
+    <div id="horariosWrap">
+      {% for hf in formset %}
+        <div class="row g-2 align-items-end border rounded p-2 mb-2 horario-item">
+          {% if hf.id %}{{ hf.id }}{% endif %}
+          <div class="col-md-4">
+            <label class="form-label d-block">Dia da semana</label>
+            {{ hf.dia_semana }}
+            {{ hf.dia_semana.errors }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label d-block">Hora início</label>
+            {{ hf.hora_inicio }}
+            {{ hf.hora_inicio.errors }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label d-block">Duração (min)</label>
+            {{ hf.duracao_minutos }}
+            {{ hf.duracao_minutos.errors }}
+          </div>
+          <div class="col-md-1">
+            <label class="form-label d-block">Remover</label>
+            <div class="form-check">
+              {{ hf.DELETE }} <label class="form-check-label">Sim</label>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="addHorarioBtn">
+      + Adicionar horário
+    </button>
+
+  </div>
+  <div class="card-footer d-flex justify-content-end gap-2">
+    <a class="btn btn-secondary" href="{% url 'turmas:list' %}">Cancelar</a>
+    <button class="btn btn-primary" type="submit">Salvar</button>
+  </div>
+</form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const wrap = document.getElementById("horariosWrap");
+  const addBtn = document.getElementById("addHorarioBtn");
+  const totalInput = document.getElementById("id_" + "{{ formset.prefix }}" + "-TOTAL_FORMS");
+
+  addBtn?.addEventListener("click", function() {
+    const total = parseInt(totalInput.value, 10);
+    const emptyHtml = `{{ formset.empty_form.as_p|escapejs }}`;
+    const div = document.createElement("div");
+    div.className = "row g-2 align-items-end border rounded p-2 mb-2 horario-item";
+    div.innerHTML = emptyHtml.replace(/__prefix__/g, total);
+    wrap.appendChild(div);
+    totalInput.value = total + 1;
+  });
+});
+</script>
+{% endblock %}

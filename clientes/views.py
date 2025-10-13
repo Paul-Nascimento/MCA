@@ -1,12 +1,19 @@
 # clientes/views.py
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest
+from django.views.decorators.http import require_http_methods, require_POST
+from django.utils import timezone
 
 from .forms import ClienteForm, ClienteFiltroForm
+from .models import Cliente
 from . import services as cs
+
+# views.py
+UF_LIST = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG",
+           "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"]
 
 @login_required
 def list_clientes(request: HttpRequest):
@@ -14,7 +21,7 @@ def list_clientes(request: HttpRequest):
     cd = f.cleaned_data if f.is_valid() else {}
     qs = cs.buscar_clientes(
         q=cd.get("q", ""),
-        ativos=(None if (cd.get("ativos") in (None,"")) else (cd.get("ativos") == "1")),
+        ativos=(None if (cd.get("ativos") in (None, "")) else (cd.get("ativos") == "1")),
         condominio=cd.get("condominio")
     )
     # paginação segura
@@ -35,66 +42,78 @@ def list_clientes(request: HttpRequest):
         "suffix": suffix,
         "base_qs": base_qs,
         "cliente_form": ClienteForm(),
+        "uf_list": UF_LIST
     })
 
+@require_http_methods(["POST"])
 @login_required
 def create_cliente(request: HttpRequest):
-    if request.method != "POST": return HttpResponseBadRequest("Somente POST.")
     form = ClienteForm(request.POST)
-    if form.is_valid():
-        try:
-            cs.criar_cliente(form.cleaned_data)
-            messages.success(request, "Cliente criado.")
-        except Exception as e:
-            messages.error(request, f"Erro ao criar: {e}")
-    else:
+    if not form.is_valid():
         messages.error(request, f"Dados inválidos: {form.errors.as_json()}")
+        return redirect(reverse("clientes:list"))
+
+    try:
+        # criar_cliente já gera token e envia e-mail
+        cs.criar_cliente(form.cleaned_data)
+        messages.success(request, "Cliente criado e e-mail de aceite enviado.")
+    except Exception as e:
+        messages.error(request, f"Erro ao criar: {e}")
+
     return redirect(reverse("clientes:list"))
 
+
+@require_http_methods(["POST"])
 @login_required
-def update_cliente(request: HttpRequest, pk: int):
-    if request.method != "POST": return HttpResponseBadRequest("Somente POST.")
-    form = ClienteForm(request.POST)
+def update_cliente(request, pk):
+    cliente = get_object_or_404(Cliente, pk=pk)
+    form = ClienteForm(request.POST, instance=cliente)  # <- AQUI!
     if form.is_valid():
-        try:
-            cs.atualizar_cliente(pk, form.cleaned_data)
-            messages.success(request, "Cliente atualizado.")
-        except Exception as e:
-            messages.error(request, f"Erro ao atualizar: {e}")
-    else:
-        messages.error(request, f"Dados inválidos: {form.errors.as_json()}")
-    return redirect(reverse("clientes:list"))
+        form.save()  # ou chamar seu service com form.cleaned_data
+        messages.success(request, "Cliente atualizado.")
+        return redirect("clientes:list")
+    messages.error(request, f"Dados inválidos: {form.errors.as_json()}")
+    return redirect(f"{reverse('clientes:list')}?edit={pk}")
 
+
+
+@require_http_methods(["POST"])
 @login_required
 def ativar_cliente(request: HttpRequest, pk: int):
-    if request.method != "POST": return HttpResponseBadRequest("Somente POST.")
     try:
-        ativo = request.POST.get("ativo","1") == "1"
+        ativo = request.POST.get("ativo", "1") == "1"
         cs.ativar(pk, ativo=ativo)
         messages.success(request, "Cliente atualizado.")
     except Exception as e:
         messages.error(request, f"Erro: {e}")
     return redirect(reverse("clientes:list"))
 
+
+@require_http_methods(["POST"])
 @login_required
 def importar_excel_view(request: HttpRequest):
-    if request.method != "POST": return HttpResponseBadRequest("Somente POST.")
     f = request.FILES.get("arquivo")
     if not f:
         messages.error(request, "Selecione um arquivo .xlsx")
         return redirect(reverse("clientes:list"))
     try:
         rel = cs.importar_excel(f)
-        messages.success(request, f"Importação: criados={rel['created']} atualizados={{rel['updated']}} ignorados={rel['skipped']}")
+        messages.success(
+            request,
+            f"Importação: criados={rel.get('created',0)} "
+            f"atualizados={rel.get('updated',0)} "
+            f"ignorados={rel.get('skipped',0)}"
+        )
     except Exception as e:
         messages.error(request, f"Falha ao importar: {e}")
     return redirect(reverse("clientes:list"))
 
+
 @login_required
 def exportar(request: HttpRequest):
     qs = cs.buscar_clientes(
-        q=request.GET.get("q",""),
-        ativos=None if request.GET.get("ativos","") == "" else request.GET.get("ativos")=="1"
+        q=request.GET.get("q", ""),
+        ativos=None if request.GET.get("ativos", "") == "" else request.GET.get("ativos") == "1"
     )
     filename, content = cs.exportar_excel(qs)
     resp = HttpResponse(content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -102,56 +121,39 @@ def exportar(request: HttpRequest):
     return resp
 
 
-
-
-
-from django.shortcuts import render
-from django.views.decorators.http import require_http_methods
-from django.utils import timezone
-from django.contrib import messages
-from django.db import transaction
-from .models import Cliente
-
-
-from django.utils import timezone
-from django.shortcuts import get_object_or_404, render, redirect
-from django.contrib import messages
-from .models import Cliente
-
-@login_required(False)  # aceite deve funcionar sem login; remova se estiver usando @login_required
-def aceite_contrato(request, token: str):
+# --------- Fluxo de aceite (público) ---------
+# NÃO usar login_required aqui: o cliente acessa via link de e-mail
+@require_http_methods(["GET", "POST"])
+def aceite_contrato(request: HttpRequest, token: str):
     # 1) Busca cliente pelo token
     cliente = get_object_or_404(Cliente, aceite_token=token)
 
-    # 2) Valida expiração
-    if not cliente.aceite_expires_at or timezone.now() > cliente.aceite_expires_at:
+    # 2) Valida expiração (ajuste os nomes dos campos conforme seu model)
+    if not getattr(cliente, "aceite_expires_at", None) or timezone.now() > cliente.aceite_expires_at:
         messages.error(request, "Link de confirmação expirado. Solicite um novo convite.")
-        # opcional: página específica de expiração
         return render(request, "clientes/aceite_contrato.html", {"expirado": True, "cliente": cliente})
 
-    # 3) Confirma aceite
-    cliente.ativo = True
-    cliente.aceite_confirmado_em = timezone.now()
-    # Opcional: invalidar o token após o uso
-    cliente.aceite_token = None
-    cliente.aceite_expires_at = None
-    cliente.save(update_fields=["ativo","aceite_confirmado_em","aceite_token","aceite_expires_at"])
+    if request.method == "POST":
+        # 3) Confirma aceite
+        cliente.ativo = True
+        cliente.aceite_confirmado_em = timezone.now()
+        # Invalida o token após o uso
+        cliente.aceite_token = None
+        cliente.aceite_expires_at = None
+        cliente.save(update_fields=["ativo", "aceite_confirmado_em", "aceite_token", "aceite_expires_at"])
+        # 4) Página de sucesso
+        return render(request, "clientes/aceite_sucesso.html", {"cliente": cliente})
 
-    # 4) Página de sucesso
-    return render(request, "clientes/aceite_sucesso.html", {"cliente": cliente})
+    # GET simples mostra a tela de aceite
+    return render(request, "clientes/aceite_contrato.html", {"cliente": cliente})
 
-
-
-from django.views.decorators.http import require_POST
-from django.shortcuts import get_object_or_404
-from .models import Cliente
 
 @require_POST
 @login_required
 def toggle_status(request, pk: int):
     c = get_object_or_404(Cliente, pk=pk)
     # Se estiver aguardando confirmação (tem token), não permite toggle
-    if not c.ativo and c.aceite_token:
+    if not c.ativo and getattr(c, "aceite_token", None):
         messages.info(request, "Cliente aguardando confirmação; altere o status somente após a confirmação ou reenviar o convite.")
         return redirect(reverse("clientes:list"))
 
@@ -159,3 +161,28 @@ def toggle_status(request, pk: int):
     c.save(update_fields=["ativo"])
     messages.success(request, ("Cliente ativado." if c.ativo else "Cliente desativado."))
     return redirect(reverse("clientes:list"))
+
+
+# views.py
+from django.utils import timezone
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib import messages
+
+def _token_valido(cliente):
+    return cliente.aceite_token and cliente.aceite_expires_at and timezone.now() <= cliente.aceite_expires_at
+
+def aceite_confirmar(request, token: str):
+    cliente = get_object_or_404(Cliente, aceite_token=token)
+
+    if not _token_valido(cliente):
+        messages.error(request, "Link de confirmação expirado ou inválido. Solicite um novo convite.")
+        return render(request, "clientes/aceite_contrato.html", {"expirado": True, "cliente": cliente})
+
+    # Confirma em 1 clique (GET)
+    cliente.ativo = True
+    cliente.aceite_confirmado_em = timezone.now()
+    cliente.aceite_token = None
+    cliente.aceite_expires_at = None
+    cliente.save(update_fields=["ativo", "aceite_confirmado_em", "aceite_token", "aceite_expires_at"])
+
+    return render(request, "clientes/aceite_sucesso.html", {"cliente": cliente})

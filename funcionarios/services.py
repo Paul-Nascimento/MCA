@@ -40,12 +40,13 @@ def criar_funcionario(data: Dict[str, Any]) -> Funcionario:
     if Funcionario.objects.filter(cpf_cnpj=doc).exists():
         raise FuncionarioJaExiste("Já existe funcionário com este CPF/CNPJ.")
     obj = Funcionario.objects.create(
-        cpf_cnpj=doc,
-        nome=data.get("nome") or "",
-        email=data.get("email") or "",
-        telefone=data.get("telefone") or "",
-        ativo=bool(data.get("ativo", True)),
-    )
+            cpf_cnpj=doc,
+            nome=data.get("nome") or "",
+            email=data.get("email") or "",
+            telefone=data.get("telefone") or "",
+            regime_trabalhista=data.get("regime_trabalhista") or Funcionario.RegimeTrabalhista.OUTRO,  # ← novo
+            ativo=bool(data.get("ativo", True)),
+        )
     return obj
 
 @transaction.atomic

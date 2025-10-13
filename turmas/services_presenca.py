@@ -1,10 +1,10 @@
-# turmas/services_presenca.py
 from __future__ import annotations
 from typing import Optional, Iterable, Dict
 from datetime import date, timedelta
 
 from django.db import transaction
-from django.db.models import Q, Count, Sum
+from django.db.models import Q, Count, Sum, IntegerField, Case, When
+from django.db.models.functions import Coalesce
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
 
 from .models import Turma, Matricula, ListaPresenca, ItemPresenca
@@ -41,23 +41,18 @@ def _vigente_na_data(turma: Turma, d: date) -> bool:
 
 
 def _weekday_matches(turma: Turma, d: date) -> bool:
-    # Monday=0 ... Sunday=6
-    return d.weekday() == turma.dia_semana
+    """Checa se o dia da semana de 'd' está marcado nos flags da turma (seg..dom)."""
+    return d.weekday() in turma.dias_ativos()
 
 
 # ===== Consultas =====
 
-# turmas/services_presenca.py (ou onde estiver)
-from typing import Optional
-from datetime import date
-from django.db.models import Count, Sum, IntegerField, Case, When
-from django.db.models.functions import Coalesce
-from .models import ListaPresenca
-
 def listas_da_turma(turma_id: int, data_de: Optional[date] = None, data_ate: Optional[date] = None):
     """
-    Retorna 'queryset' de dicts com agregados (qtd itens e presentes),
-    evitando colisão com propriedades do modelo.
+    Retorna um QuerySet de OBJETOS ListaPresenca, anotados com:
+      - total_itens_count
+      - total_presentes_count
+    (sem usar .values), para compatibilidade com o template e evitando colisão com @property.
     """
     qs = ListaPresenca.objects.filter(turma_id=turma_id)
 
@@ -66,42 +61,40 @@ def listas_da_turma(turma_id: int, data_de: Optional[date] = None, data_ate: Opt
     if data_ate:
         qs = qs.filter(data__lte=data_ate)
 
-    qs = (
-        qs.annotate(
-            total_itens=Count("itens", distinct=True),
-            total_presentes=Coalesce(
-                Sum(
-                    Case(
-                        When(itens__presente=True, then=1),
-                        default=0,
-                        output_field=IntegerField(),
-                    )
-                ),
-                0,
+    qs = qs.annotate(
+        total_itens_count=Count("itens", distinct=True),
+        total_presentes_count=Coalesce(
+            Sum(
+                Case(
+                    When(itens__presente=True, then=1),
+                    default=0,
+                    output_field=IntegerField(),
+                )
             ),
-        )
-        .values("id", "data", "observacao_geral", "total_itens", "total_presentes")
-        .order_by("-data", "-id")
-    )
-    return qs
+            0,
+        ),
+    ).order_by("-data", "-id")
 
+    return qs
 
 
 def abrir_lista(lista_id: int):
     """
-    Carrega a lista + itens ordenados por nome snapshot.
+    Carrega a lista de presença e os itens (1 por MATRÍCULA) já ordenados por nome snapshot.
     """
     lista = (
         ListaPresenca.objects
-        .select_related("turma", "turma__modalidade", "turma__condominio", "turma__professor")
+        .select_related("turma", "turma__modalidade__condominio", "turma__professor")
         .filter(id=lista_id)
         .first()
     )
     if not lista:
         raise ObjectDoesNotExist("Lista não encontrada.")
+
     itens = (
         ItemPresenca.objects
-        .filter(lista=lista)
+        .select_related("cliente", "matricula")
+        .filter(lista_id=lista.id)
         .order_by("cliente_nome_snapshot", "id")
     )
     return lista, itens
@@ -115,12 +108,12 @@ def criar_lista_presenca(*, turma_id: int, d: date, observacao_geral: str = "") 
     Cria a lista para a data d, validando:
       - turma ativa
       - data dentro da vigência
-      - dia da semana correto
+      - dia da semana correto (usando flags seg..dom)
       - inexistência de lista duplicada para a data
     E cria itens com snapshot do PARTICIPANTE (se houver) ou do cliente.
     """
     turma = (
-        Turma.objects.select_related("modalidade", "condominio", "professor")
+        Turma.objects.select_related("modalidade__condominio", "professor")
         .filter(id=turma_id, ativo=True)
         .first()
     )
@@ -129,7 +122,7 @@ def criar_lista_presenca(*, turma_id: int, d: date, observacao_geral: str = "") 
     if not _vigente_na_data(turma, d):
         raise ValidationError("Data fora da vigência da turma.")
     if not _weekday_matches(turma, d):
-        raise ValidationError("Data não corresponde ao dia da semana da turma.")
+        raise ValidationError("Data não corresponde a um dia ativo da turma.")
 
     if ListaPresenca.objects.filter(turma_id=turma_id, data=d).exists():
         raise ListaJaExiste("Já existe lista para esta data.")
@@ -140,7 +133,7 @@ def criar_lista_presenca(*, turma_id: int, d: date, observacao_geral: str = "") 
         observacao_geral=observacao_geral or "",
     )
 
-    # cria itens para as matrículas ativas na data
+    # cria itens para as matrículas ativas na data (1 item por MATRÍCULA)
     for m in _matriculas_ativas_na_data(turma_id, d):
         nome_snap = (m.participante_nome or m.cliente.nome_razao).strip()
         doc_snap = (m.participante_cpf or m.cliente.cpf_cnpj)
@@ -154,6 +147,17 @@ def criar_lista_presenca(*, turma_id: int, d: date, observacao_geral: str = "") 
             cliente_doc_snapshot=doc_snap,
         )
 
+        if m.participante_nome:
+            ItemPresenca.objects.create(
+                lista=lista,
+                cliente=m.cliente,
+                matricula=None,          # <= sem matrícula para não conflitar na unique_together
+                presente=False,
+                observacao="",
+                cliente_nome_snapshot=m.cliente.nome_razao,
+                cliente_doc_snapshot=m.cliente.cpf_cnpj,
+            )
+
     return lista
 
 
@@ -161,7 +165,7 @@ def criar_lista_presenca(*, turma_id: int, d: date, observacao_geral: str = "") 
 def sincronizar_itens_lista(lista_id: int) -> Dict[str, int]:
     """
     Garante que a lista tenha itens para TODAS as matrículas ativas na data da lista.
-    - Adiciona itens faltantes.
+    - Adiciona itens faltantes (por MATRÍCULA).
     - Não remove itens existentes (mantém histórico manual).
     Retorna {"adicionados": X, "existentes": Y}.
     """
@@ -194,6 +198,27 @@ def sincronizar_itens_lista(lista_id: int) -> Dict[str, int]:
             cliente_doc_snapshot=doc_snap,
         )
         adicionados += 1
+
+        # ... mantém a lógica existente para criar o item da matrícula ...
+
+        # >>> GARANTIR item extra do TITULAR quando matrícula tem participante
+        if m.participante_nome:
+            tem_titular = ItemPresenca.objects.filter(
+                lista=lista, matricula__isnull=True, cliente=m.cliente,
+                cliente_nome_snapshot=m.cliente.nome_razao
+            ).exists()
+            if not tem_titular:
+                ItemPresenca.objects.create(
+                    lista=lista,
+                    cliente=m.cliente,
+                    matricula=None,
+                    presente=False,
+                    observacao="",
+                    cliente_nome_snapshot=m.cliente.nome_razao,
+                    cliente_doc_snapshot=m.cliente.cpf_cnpj,
+                )
+                adicionados += 1
+
 
     return {"adicionados": adicionados, "existentes": existentes}
 
@@ -250,7 +275,7 @@ def gerar_listas_automaticas(
 ) -> Dict[str, int]:
     """
     Gera listas entre [data_de, data_ate] apenas nos dias que batem com a turma
-    e dentro da vigência. Ignora as que já existirem.
+    (usando flags seg..dom) e dentro da vigência. Ignora as que já existirem.
     """
     turma = Turma.objects.filter(id=turma_id, ativo=True).first()
     if not turma:

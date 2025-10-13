@@ -156,6 +156,7 @@ EMAIL_HOST_USER = "paulonascimento0910@gmail.com"
 EMAIL_HOST_PASSWORD = "shwzichufwbrrsqn"          # senha de app do Gmail
 DEFAULT_FROM_EMAIL = "MCA <paulonascimento0910@gmail.com>"
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
+SITE_URL = "127.0.0.1:8000"  # sem barra no final
 
 
 from urllib.parse import quote

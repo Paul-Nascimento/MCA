@@ -1,0 +1,30 @@
+{# templates/clientes/email_aceite.html #}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-family: Arial, Helvetica, sans-serif;">
+  <tr>
+    <td>
+      <h2 style="margin:0 0 8px">Confirmação de Contrato</h2>
+      <p style="margin:0 0 16px">Olá, {{ cliente.nome_razao }}.</p>
+      <p style="margin:0 0 16px">
+        Para ativar seu cadastro e confirmar o contrato, basta clicar no botão abaixo.
+      </p>
+
+      <p style="margin:24px 0">
+        <a href="{{ link_confirm }}"
+           style="background:#16a34a;color:#fff;text-decoration:none;padding:12px 18px;border-radius:6px;display:inline-block">
+          Confirmar contrato
+        </a>
+      </p>
+
+      <p style="margin:16px 0;color:#444;font-size:13px">
+        Se o botão não funcionar, copie e cole este endereço no navegador:<br>
+        <span style="word-break: break-all;">{{ link_confirm }}</span>
+      </p>
+
+      <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+      <p style="margin:0;color:#666;font-size:12px">
+        Este link expira em {{ expira_em|date:"d/m/Y H:i" }}.
+        Se você não solicitou, ignore este e-mail.
+      </p>
+    </td>
+  </tr>
+</table>

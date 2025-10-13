@@ -108,7 +108,23 @@
           </td>
           <td>{{ t.condominio.nome }}</td>
           <td>{{ t.professor.nome }}</td>
-          <td>{{ t.get_dia_semana_display }} {{ t.hora_inicio|time:"H:i" }}</td>
+
+          <!-- Múltiplos dias + hora -->
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <div class="d-flex flex-wrap gap-1">
+                {% if t.seg %}<span class="badge text-bg-secondary">Seg</span>{% endif %}
+                {% if t.ter %}<span class="badge text-bg-secondary">Ter</span>{% endif %}
+                {% if t.qua %}<span class="badge text-bg-secondary">Qua</span>{% endif %}
+                {% if t.qui %}<span class="badge text-bg-secondary">Qui</span>{% endif %}
+                {% if t.sex %}<span class="badge text-bg-secondary">Sex</span>{% endif %}
+                {% if t.sab %}<span class="badge text-bg-secondary">Sáb</span>{% endif %}
+                {% if t.dom %}<span class="badge text-bg-secondary">Dom</span>{% endif %}
+              </div>
+              <small class="text-muted">{{ t.hora_inicio|time:"H:i" }}</small>
+            </div>
+          </td>
+
           <td>{{ t.capacidade }}</td>
           <td>
             {% if t.ocupacao >= t.capacidade %}
@@ -131,11 +147,17 @@
                     data-nome_exibicao="{{ t.nome_exibicao|default_if_none:''|escape }}"
                     data-valor="{{ t.valor }}"
                     data-capacidade="{{ t.capacidade }}"
-                    data-dia_semana="{{ t.dia_semana }}"
                     data-hora_inicio="{{ t.hora_inicio|time:'H:i' }}"
                     data-duracao="{{ t.duracao_minutos }}"
                     data-inicio_vigencia="{{ t.inicio_vigencia|date:'Y-m-d' }}"
                     data-fim_vigencia="{{ t.fim_vigencia|date:'Y-m-d' }}"
+                    data-seg="{{ t.seg|yesno:'1,0' }}"
+                    data-ter="{{ t.ter|yesno:'1,0' }}"
+                    data-qua="{{ t.qua|yesno:'1,0' }}"
+                    data-qui="{{ t.qui|yesno:'1,0' }}"
+                    data-sex="{{ t.sex|yesno:'1,0' }}"
+                    data-sab="{{ t.sab|yesno:'1,0' }}"
+                    data-dom="{{ t.dom|yesno:'1,0' }}"
                     data-ativo="{{ t.ativo|yesno:'1,0' }}">
               <i class="fa-solid fa-pen"></i>
             </button>
@@ -143,11 +165,10 @@
             <button class="btn btn-sm btn-outline-success"
                   title="Matricular cliente"
                   data-bs-toggle="modal"
-                  data-bs-target="#selecionarClienteModal"
-                  data-url="{% url 'turmas:selecionar_cliente' t.id %}?embed=1">
+                  data-bs-target="#matriculaModal"
+                  data-turma="{{ t.id }}">
             <i class="fa-solid fa-user-plus"></i>
           </button>
-
 
             <a class="btn btn-sm btn-outline-secondary"
                title="Ver alunos"
@@ -225,13 +246,7 @@
                 {% for m in modalidades %}<option value="{{ m.id }}">{{ m.nome }}</option>{% endfor %}
               </select>
             </div>
-            <div class="col-md-4">
-              <label class="form-label">Condomínio</label>
-              <select name="condominio" class="form-select" required>
-                <option value="">--</option>
-                {% for c in condominios %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endfor %}
-              </select>
-            </div>
+            <!-- REMOVIDO: campo Condomínio do formulário -->
 
             <div class="col-md-6">
               <label class="form-label">Nome (opcional)</label>
@@ -246,12 +261,42 @@
               <input name="capacidade" type="number" min="1" class="form-control" required>
             </div>
 
-            <div class="col-md-3">
-              <label class="form-label">Dia da Semana</label>
-              <select name="dia_semana" class="form-select" required>
-                {% for idx, label in DIAS_SEMANA %}<option value="{{ idx }}">{{ label }}</option>{% endfor %}
-              </select>
+            <!-- Checkboxes de dias -->
+            <div class="col-12">
+              <label class="form-label d-block mb-1">Dias da semana</label>
+              <div class="d-flex flex-wrap gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="seg" id="id_seg">
+                  <label class="form-check-label" for="id_seg">Seg</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="ter" id="id_ter">
+                  <label class="form-check-label" for="id_ter">Ter</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="qua" id="id_qua">
+                  <label class="form-check-label" for="id_qua">Qua</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="qui" id="id_qui">
+                  <label class="form-check-label" for="id_qui">Qui</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="sex" id="id_sex">
+                  <label class="form-check-label" for="id_sex">Sex</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="sab" id="id_sab">
+                  <label class="form-check-label" for="id_sab">Sáb</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="dom" id="id_dom">
+                  <label class="form-check-label" for="id_dom">Dom</label>
+                </div>
+              </div>
+              <small class="text-muted">Selecione um ou mais dias.</small>
             </div>
+
             <div class="col-md-3">
               <label class="form-label">Hora Início</label>
               <input name="hora_inicio" type="time" class="form-control" required>
@@ -401,25 +446,40 @@ document.addEventListener("DOMContentLoaded", function() {
     turmaForm.action = "{% url 'turmas:create' %}";
     turmaTitle.textContent = "Nova Turma";
 
+    // por padrão, desmarca os dias
+    ['seg','ter','qua','qui','sex','sab','dom'].forEach(k => {
+      const el = turmaForm.querySelector(`[name="${k}"]`);
+      if (el) el.checked = false;
+    });
+
     if (mode === 'edit') {
       turmaTitle.textContent = "Editar Turma";
       const id = btn.getAttribute('data-id');
       turmaForm.action = "{% url 'turmas:update' 0 %}".replace('/0/', '/' + id + '/');
 
       const setVal = (name, value) => { const el = turmaForm.querySelector(`[name="${name}"]`); if (el) el.value = value || ''; }
-      const setSel = setVal;
+      const setChk = (name, flag) => { const el = turmaForm.querySelector(`[name="${name}"]`); if (el) el.checked = (flag === '1'); }
 
-      setSel('professor', btn.getAttribute('data-professor'));
-      setSel('modalidade', btn.getAttribute('data-modalidade'));
-      setSel('condominio', btn.getAttribute('data-condominio'));
+      setVal('professor', btn.getAttribute('data-professor'));
+      setVal('modalidade', btn.getAttribute('data-modalidade'));
+      /* removido: setVal('condominio', ...) pois o campo não existe mais no formulário */
       setVal('nome_exibicao', btn.getAttribute('data-nome_exibicao'));
       setVal('valor', btn.getAttribute('data-valor'));
       setVal('capacidade', btn.getAttribute('data-capacidade'));
-      setSel('dia_semana', btn.getAttribute('data-dia_semana'));
       setVal('hora_inicio', btn.getAttribute('data-hora_inicio'));
       setVal('duracao_minutos', btn.getAttribute('data-duracao'));
       setVal('inicio_vigencia', btn.getAttribute('data-inicio_vigencia'));
       setVal('fim_vigencia', btn.getAttribute('data-fim_vigencia'));
+
+      // preencher dias
+      setChk('seg', btn.getAttribute('data-seg'));
+      setChk('ter', btn.getAttribute('data-ter'));
+      setChk('qua', btn.getAttribute('data-qua'));
+      setChk('qui', btn.getAttribute('data-qui'));
+      setChk('sex', btn.getAttribute('data-sex'));
+      setChk('sab', btn.getAttribute('data-sab'));
+      setChk('dom', btn.getAttribute('data-dom'));
+
       const ativoEl = turmaForm.querySelector('[name="ativo"]');
       if (ativoEl) ativoEl.checked = (btn.getAttribute('data-ativo') === '1');
     }
