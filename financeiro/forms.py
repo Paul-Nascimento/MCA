@@ -127,3 +127,11 @@ class RecorrenciaMensalForm(forms.Form):
         )
 
         self.fields["categoria"].queryset = CategoriaFinanceira.objects.all().order_by("nome")
+
+class CategoriaFinanceiraForm(forms.ModelForm):
+    class Meta:
+        model = CategoriaFinanceira
+        fields = ["nome"]
+        widgets = {
+            "nome": forms.TextInput(attrs={"placeholder": "Ex.: Mensalidades, Serviços, Materiais"})
+        }

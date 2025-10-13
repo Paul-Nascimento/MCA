@@ -84,6 +84,13 @@ def listas_da_turma(request: HttpRequest, turma_id: int):
         .order_by("-data", "-id")
     )
 
+    for lid in qs.values_list("id", flat=True):
+        try:
+            ps.sincronizar_itens_lista(lid)
+        except Exception:
+            # nunca quebra a página por detalhe de sync; seguimos
+            pass
+
     if data_de:
         qs = qs.filter(data__gte=data_de)
     if data_ate:
@@ -199,22 +206,33 @@ def gerar_listas_automaticas_view(request: HttpRequest):
 # ----------------- Tela baseada em MATRÍCULA -----------------
 
 from . import services_presenca as ps
+from . import services_presenca as ps
 
 @login_required
 def presenca_detalhe(request: HttpRequest, lista_id: int):
-    lista, itens = ps.abrir_lista(lista_id)  # itens = QuerySet[ItemPresenca]
+    # 1) garante que itens de novas matrículas sejam criados
+    try:
+        ps.sincronizar_itens_lista(lista_id)
+    except Exception:
+        # não quebra a tela caso algo menor ocorra; seguimos para abrir
+        pass
+
+    # 2) carrega lista + itens já sincronizados
+    lista, itens = ps.abrir_lista(lista_id)
     presente_ids = {it.id for it in itens if it.presente}
     obs_por_item = {it.id: (it.observacao or "") for it in itens}
+
     return render(
         request,
         "turmas/presenca_detail.html",
         {
             "lista": lista,
-            "itens": itens,                 # <<< iterar por itens (cada linha é 1 ItemPresenca)
-            "presente_ids": presente_ids,   # <<< checkboxes por item.id
+            "itens": itens,
+            "presente_ids": presente_ids,
             "obs_por_item": obs_por_item,
         },
     )
+
 
 
 

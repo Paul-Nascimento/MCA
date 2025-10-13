@@ -182,6 +182,8 @@ def sincronizar_itens_lista(lista_id: int) -> Dict[str, int]:
     }
     adicionados = existentes = 0
 
+    #print(f'Matriculas ativas')
+    #print(_matriculas_ativas_na_data(turma_id, d))
     for m in _matriculas_ativas_na_data(turma_id, d):
         if m.id in atuais:
             existentes += 1
@@ -201,23 +203,7 @@ def sincronizar_itens_lista(lista_id: int) -> Dict[str, int]:
 
         # ... mantém a lógica existente para criar o item da matrícula ...
 
-        # >>> GARANTIR item extra do TITULAR quando matrícula tem participante
-        if m.participante_nome:
-            tem_titular = ItemPresenca.objects.filter(
-                lista=lista, matricula__isnull=True, cliente=m.cliente,
-                cliente_nome_snapshot=m.cliente.nome_razao
-            ).exists()
-            if not tem_titular:
-                ItemPresenca.objects.create(
-                    lista=lista,
-                    cliente=m.cliente,
-                    matricula=None,
-                    presente=False,
-                    observacao="",
-                    cliente_nome_snapshot=m.cliente.nome_razao,
-                    cliente_doc_snapshot=m.cliente.cpf_cnpj,
-                )
-                adicionados += 1
+        
 
 
     return {"adicionados": adicionados, "existentes": existentes}

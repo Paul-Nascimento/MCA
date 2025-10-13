@@ -1,8 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
-
 {% block title %}Funcionários | MCA{% endblock %}
-
 {% block content %}
 
 {% if messages %}
@@ -17,37 +14,27 @@
 <form method="get" class="card card-body mb-3">
   <div class="row g-2 align-items-end">
     <div class="col-md-6">
-      <label class="form-label">Busca (nome, e-mail, CPF/CNPJ)</label>
-      <input type="text" name="q" value="{{ filtro_form.initial.q }}" class="form-control" placeholder="Digite para buscar...">
+      <label class="form-label">Busca</label>
+      <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Nome ou e-mail">
     </div>
     <div class="col-md-3">
-      <label class="form-label">Status</label>
-      <select name="ativos" class="form-select">
-        <option value=""  {% if ativos_param == "" %}selected{% endif %}>Todos</option>
-        <option value="1" {% if ativos_param == "1" %}selected{% endif %}>Ativos</option>
-        <option value="0" {% if ativos_param == "0" %}selected{% endif %}>Inativos</option>
+      <label class="form-label">Situação</label>
+      <select name="ativo" class="form-select">
+        <option value="" {% if ativo == None or ativo == '' %}selected{% endif %}>— Todos —</option>
+        <option value="1" {% if ativo == '1' %}selected{% endif %}>Ativos</option>
+        <option value="0" {% if ativo == '0' %}selected{% endif %}>Inativos</option>
       </select>
     </div>
-        <div class="row g-2 align-items-end mb-3">
-      <div class="col-md-4">
-        <label class="form-label">Busca</label>
-        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Nome ou e-mail">
-      </div>
-
-      <div class="col-md-3">
-        <label class="form-label">Regime trabalhista</label>
-        <select name="regime" class="form-select">
-          <option value="">— Todos —</option>
-          {% for value, label in REGIMES %}
-            <option value="{{ value }}" {% if value == regime %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-
-
-
-    <div class="col-md-3 d-grid">
+    <div class="col-md-3">
+      <label class="form-label">Regime trabalhista</label>
+      <select name="regime" class="form-select">
+        <option value="">— Todos —</option>
+        {% for value, label in REGIMES %}
+          <option value="{{ value }}" {% if value == regime %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-3 d-grid">
       <button class="btn btn-primary" type="submit">
         <i class="fa-solid fa-magnifying-glass"></i> Filtrar
       </button>
@@ -58,7 +45,8 @@
 <!-- Ações -->
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div class="btn-group">
-    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#funcModal" data-mode="create">
+    <button type="button" class="btn btn-success"
+            data-bs-toggle="modal" data-bs-target="#funcModal" data-mode="create">
       <i class="fa-solid fa-user-plus"></i> Novo Funcionário
     </button>
   </div>
@@ -66,7 +54,8 @@
     <a class="btn btn-outline-primary" href="{% url 'funcionarios:exportar' %}">
       <i class="fa-solid fa-file-export"></i> Exportar Excel
     </a>
-    <button class="btn btn-outline-dark" data-bs-toggle="modal" data-bs-target="#importModal">
+    <button type="button" class="btn btn-outline-dark"
+            data-bs-toggle="modal" data-bs-target="#importModal">
       <i class="fa-solid fa-file-import"></i> Importar Excel
     </button>
   </div>
@@ -103,7 +92,7 @@
             {% endif %}
           </td>
           <td>
-            <button class="btn btn-sm btn-outline-primary"
+            <button type="button" class="btn btn-sm btn-outline-primary"
                     data-bs-toggle="modal"
                     data-bs-target="#funcModal"
                     data-mode="edit"
@@ -111,15 +100,15 @@
                     data-cpf_cnpj="{{ f.cpf_cnpj }}"
                     data-nome="{{ f.nome|escape }}"
                     data-email="{{ f.email|default_if_none:'' }}"
-                    data-regime="{{ f.regime_trabalhista }}"  
                     data-telefone="{{ f.telefone|default_if_none:'' }}"
+                    data-regime="{{ f.regime_trabalhista }}"
                     data-ativo="{{ f.ativo|yesno:'1,0' }}">
               <i class="fa-solid fa-pen"></i>
             </button>
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="6" class="text-center py-4">Nenhum funcionário encontrado.</td></tr>
+        <tr><td colspan="7" class="text-center py-4">Nenhum funcionário encontrado.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -132,23 +121,23 @@
       <ul class="pagination mb-0">
         <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
           {% if page_obj.has_previous %}
-            <a class="page-link" href="?page=1{{ suffix }}" aria-label="Primeira">&laquo;</a>
+            <a class="page-link" href="?page=1{{ base_qs }}" aria-label="Primeira">&laquo;</a>
           {% else %}<span class="page-link">&laquo;</span>{% endif %}
         </li>
         <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
           {% if page_obj.has_previous %}
-            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{{ suffix }}">Anterior</a>
+            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{{ base_qs }}">Anterior</a>
           {% else %}<span class="page-link">Anterior</span>{% endif %}
         </li>
         <li class="page-item active"><span class="page-link">{{ page_obj.number }}</span></li>
         <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
           {% if page_obj.has_next %}
-            <a class="page-link" href="?page={{ page_obj.next_page_number }}{{ suffix }}">Próxima</a>
+            <a class="page-link" href="?page={{ page_obj.next_page_number }}{{ base_qs }}">Próxima</a>
           {% else %}<span class="page-link">Próxima</span>{% endif %}
         </li>
         <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
           {% if page_obj.has_next %}
-            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{{ suffix }}" aria-label="Última">&raquo;</a>
+            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{{ base_qs }}" aria-label="Última">&raquo;</a>
           {% else %}<span class="page-link">&raquo;</span>{% endif %}
         </li>
       </ul>
@@ -158,7 +147,7 @@
 
 <!-- Modal Cadastro/Edição -->
 <div class="modal fade" id="funcModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <form id="funcForm" method="post" action="{% url 'funcionarios:create' %}">
         {% csrf_token %}
@@ -168,14 +157,15 @@
         </div>
         <div class="modal-body">
           <div class="row g-3">
-            <div class="col-md-5">
+            <div class="col-md-4">
               <label class="form-label">CPF/CNPJ</label>
               <input name="cpf_cnpj" class="form-control" required>
             </div>
-            <div class="col-md-7">
+            <div class="col-md-8">
               <label class="form-label">Nome</label>
               <input name="nome" class="form-control" required>
             </div>
+
             <div class="col-md-6">
               <label class="form-label">E-mail</label>
               <input name="email" type="email" class="form-control">
@@ -184,29 +174,21 @@
               <label class="form-label">Telefone</label>
               <input name="telefone" class="form-control">
             </div>
-            
-            <div class="mb-2">
-              <label class="form-label">Regime trabalhista</label>
-              <select name="regime_trabalhista" id="id_regime_trabalhista" class="form-select" required>
-              {% for value, label in REGIMES %}
-                <option value="{{ value }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-            </div>
 
-            <div class="col-md-12 form-check mt-2">
-              <input class="form-check-input" type="checkbox" name="ativo" id="ativoCheck" checked>
-              <label class="form-check-label" for="ativoCheck">Ativo</label>
+            <div class="col-md-6">
+              <label class="form-label">Regime trabalhista</label>
+              <select name="regime_trabalhista" class="form-select">
+                {% for value, label in REGIMES %}
+                  <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3 form-check mt-4">
+              <input class="form-check-input" type="checkbox" name="ativo" id="ativoFun" checked>
+              <label class="form-check-label" for="ativoFun">Ativo</label>
             </div>
           </div>
-
-            
-
         </div>
-        
-        
-
-
         <div class="modal-footer">
           <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
           <button class="btn btn-primary" type="submit">Salvar</button>
@@ -223,16 +205,13 @@
       <form method="post" action="{% url 'funcionarios:importar' %}" enctype="multipart/form-data">
         {% csrf_token %}
         <div class="modal-header">
-          <h5 class="modal-title">Importar Funcionários (Excel .xlsx)</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          <h5 class="modal-title">Importar Funcionários (.xlsx)</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-2">
-            <input class="form-control" type="file" name="arquivo" accept=".xlsx" required>
-          </div>
-          <small class="text-muted">
-            Cabeçalhos mínimos: <code>cpf_cnpj</code>, <code>nome</code>.<br>
-            Opcionais: <code>email</code>, <code>telefone</code>, <code>ativo</code>.
+          <input type="file" name="arquivo" accept=".xlsx" class="form-control" required>
+          <small class="text-muted d-block mt-2">
+            Colunas reconhecidas: CPF/CNPJ, Nome, E-mail, Telefone, Ativo.
           </small>
         </div>
         <div class="modal-footer">
@@ -244,16 +223,18 @@
   </div>
 </div>
 
-<!-- Script modal -->
+<!-- Script do modal (Bootstrap 5) -->
 <script>
 document.addEventListener("DOMContentLoaded", function() {
   const modal = document.getElementById('funcModal');
-  const form = document.getElementById('funcForm');
+  if (!modal) return;
+
+  const form  = document.getElementById('funcForm');
   const title = modal.querySelector('.modal-title');
 
   modal.addEventListener('show.bs.modal', function (event) {
     const button = event.relatedTarget;
-    const mode = button.getAttribute('data-mode');
+    const mode   = button?.getAttribute('data-mode') || 'create';
 
     form.reset();
     form.action = "{% url 'funcionarios:create' %}";
@@ -264,41 +245,22 @@ document.addEventListener("DOMContentLoaded", function() {
       const id = button.getAttribute('data-id');
       form.action = "{% url 'funcionarios:update' 0 %}".replace('/0/', '/' + id + '/');
 
-      const setVal = (name, value) => { const el = form.querySelector(`[name="${name}"]`); if (el) el.value = value || ''; }
-      setVal('cpf_cnpj', button.getAttribute('data-cpf_cnpj'));
-      setVal('nome', button.getAttribute('data-nome'));
-      setVal('email', button.getAttribute('data-email'));
-      setVal('telefone', button.getAttribute('data-telefone'));
-      form.querySelector('[name="ativo"]').checked = (button.getAttribute('data-ativo') === '1');
+      const setVal = (name, value) => {
+        const el = form.querySelector(`[name="${name}"]`);
+        if (el) el.value = (value ?? '');
+      };
+
+      setVal('cpf_cnpj',  button.getAttribute('data-cpf_cnpj'));
+      setVal('nome',      button.getAttribute('data-nome'));
+      setVal('email',     button.getAttribute('data-email'));
+      setVal('telefone',  button.getAttribute('data-telefone'));
+      setVal('regime_trabalhista', button.getAttribute('data-regime'));
+
+      const ativoEl = form.querySelector('[name="ativo"]');
+      if (ativoEl) ativoEl.checked = (button.getAttribute('data-ativo') === '1');
     }
   });
 });
-
-
-  document.getElementById('modalFuncionario').addEventListener('show.bs.modal', function (ev) {
-    const btn  = ev.relatedTarget;
-    const form = this.querySelector('form');
-
-    const id     = btn.getAttribute('data-id') || '';
-    const nome   = btn.getAttribute('data-nome') || '';
-    const email  = btn.getAttribute('data-email') || '';
-    const regime = btn.getAttribute('data-regime') || '';
-    const ativo  = btn.getAttribute('data-ativo') || '1';
-
-    // Define action conforme criar/editar
-    if (id) {
-      form.action = "{% url 'funcionarios:update' 0 %}".replace('/0/', '/' + id + '/');
-    } else {
-      form.action = "{% url 'funcionarios:create' %}";
-    }
-
-    // Preenche campos
-    form.querySelector('[name="nome"]').value  = nome;
-    form.querySelector('[name="email"]').value = email;
-    form.querySelector('[name="regime_trabalhista"]').value = regime; // <- aqui!
-    const chk = form.querySelector('[name="ativo"]');
-    if (chk) chk.checked = (ativo === '1');
-  });
 </script>
 
 {% endblock %}

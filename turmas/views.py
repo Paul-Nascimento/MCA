@@ -167,6 +167,8 @@ def exportar_turmas(request: HttpRequest) -> HttpResponse:
 # Alunos da turma (link da listagem)
 # ------------------------------------------------------------
 
+from django.core.paginator import Paginator  # já importado no topo do arquivo
+
 @login_required
 def alunos_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
     turma = (
@@ -181,16 +183,26 @@ def alunos_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
 
     try:
         from .models import Matricula
-        alunos = (
-                turma.matriculas
-                    .select_related("cliente")
-                    .filter(ativa=True)
-                    .order_by("cliente__nome_razao")
-            )
+        qs = (
+            turma.matriculas
+                .select_related("cliente")
+                .filter(ativa=True)
+                .order_by("cliente__nome_razao")
+        )
     except Exception:
-        alunos = []
+        qs = Matricula.objects.none()
 
-    return render(request, "turmas/alunos.html", {"turma": turma, "alunos": alunos})
+    page = max(1, int(request.GET.get("page", "1") or 1))
+    page_obj = Paginator(qs, 20).get_page(page)
+
+    vagas = max(0, turma.capacidade - turma.ocupacao)
+
+    return render(
+        request,
+        "turmas/alunos.html",
+        {"turma": turma, "page_obj": page_obj, "vagas": vagas}
+    )
+
 
 # ------------------------------------------------------------
 # Matrículas
@@ -212,6 +224,14 @@ def matricular_view(request: HttpRequest) -> HttpResponse:
         participante_sexo = request.POST.get("participante_sexo") or ""
         proprio_cliente = (request.POST.get("proprio_cliente") or request.POST.get("chkProprioAluno") or "on")
         proprio_cliente = str(proprio_cliente).lower() in ("1", "true", "on")
+
+        # tenta ler marcação vinda do form padrão
+        raw_flag = request.POST.get("proprio_cliente") or request.POST.get("chkProprioAluno") or "on"
+        proprio_cliente = str(raw_flag).lower() in ("1", "true", "on")
+
+        # mas SE houver dados de participante, forçamos "terceiro"
+        if any([participante_nome.strip(), participante_cpf.strip(), participante_sexo.strip()]):
+            proprio_cliente = False
 
         print('Aq')
         print(participante_nome, participante_cpf, participante_sexo, proprio_cliente)

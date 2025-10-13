@@ -37,32 +37,36 @@
 
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0">
-        <thead class="table-light">
-          <tr>
-            <th style="width:48px;" class="text-center">Pres.</th>
-            <th>Aluno</th>
-            <th class="d-none d-md-table-cell">Documento</th>
-            <th class="d-none d-lg-table-cell">Cliente</th>
-            <th style="width:28%;">Obs.</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for it in itens %}
+        <thead>
   <tr>
-    <td>
-      <input type="checkbox" name="presentes" value="{{ it.id }}"
-             {% if it.id in presente_ids %}checked{% endif %}>
-    </td>
-    <td>{{ it.cliente_nome_snapshot }}</td>
-    <td>{{ it.cliente_doc_snapshot }}</td>
-    <td>
-      <input type="text" name="obs_I{{ it.id }}" class="form-control form-control-sm"
-             value="{{ obs_por_item.it.id|default_if_none:'' }}">
-    </td>
+    <th style="width: 3rem;"></th>
+    <th>Cliente (titular)</th>
+    <th>Aluno</th>
+    <th>Observação</th>
   </tr>
-{% endfor %}
+    </thead>
+    <tbody>
+      {% for item in itens %}
+        <tr>
+          <td class="text-center align-middle">
+            <input class="form-check-input" type="checkbox" name="presentes"
+                  value="{{ item.id }}" {% if item.id in presente_ids %}checked{% endif %}>
+          </td>
+          <td class="align-middle">
+            {{ item.cliente.nome_razao }}
+          </td>
+          <td class="align-middle">
+            {{ item.cliente_nome_snapshot }}
+          </td>
+          <td>
+            <input type="text" class="form-control" name="obs_I{{ item.id }}"
+              value="{{ item.observacao|default_if_none:'' }}">
 
-        </tbody>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+
       </table>
     </div>
 

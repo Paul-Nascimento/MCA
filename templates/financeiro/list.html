@@ -3,7 +3,11 @@
 {% block content %}
 
 {% if messages %}
-  <div class="mb-3">{% for message in messages %}<div class="alert alert-{{ message.tags }} mb-2">{{ message }}</div>{% endfor %}</div>
+  <div class="mb-3">
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }} mb-2">{{ message }}</div>
+    {% endfor %}
+  </div>
 {% endif %}
 
 <form method="get" class="card card-body mb-3">
@@ -52,6 +56,12 @@
     <button class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#recorrenciaModal">
       <i class="fa-solid fa-bolt"></i> Recorrência
     </button>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#mensalidadesModal">
+      <i class="fa-solid fa-receipt"></i> Gerar Mensalidades
+    </button>
+    <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#categoriaModal">
+      <i class="fa-solid fa-tags"></i> Nova Categoria
+    </button>
   </div>
   <a class="btn btn-outline-primary" href="{% url 'financeiro:exportar' %}?{{ base_qs }}"><i class="fa-solid fa-file-export"></i> Exportar Excel</a>
 </div>
@@ -64,9 +74,9 @@
           <th>Tipo</th>
           <th>Descrição</th>
           <th>Vencimento</th>
-          <th>Valor</th>
-          <th>Baixado</th>
-          <th>Saldo</th>
+          <th class="text-end">Valor</th>
+          <th class="text-end">Baixado</th>
+          <th class="text-end">Saldo</th>
           <th>Status</th>
           <th>Contraparte</th>
           <th style="width: 180px;">Ações</th>
@@ -76,17 +86,25 @@
         {% for l in page_obj.object_list %}
         <tr>
           <td>
-            {% if l.tipo == "RECEBER" %}<span class="badge text-bg-success">Receber</span>
-            {% else %}<span class="badge text-bg-warning text-dark">Pagar</span>{% endif %}
+            {% if l.tipo == "RECEBER" %}
+              <span class="badge text-bg-success">Receber</span>
+            {% else %}
+              <span class="badge text-bg-warning text-dark">Pagar</span>
+            {% endif %}
           </td>
-          <td>{{ l.descricao }}{% if l.observacao %}<br><small class="text-muted">{{ l.observacao|truncatechars:80 }}</small>{% endif %}</td>
+          <td>
+            {{ l.descricao }}
+            {% if l.observacao %}
+              <br><small class="text-muted">{{ l.observacao|truncatechars:80 }}</small>
+            {% endif %}
+          </td>
           <td>
             {{ l.vencimento|date:"d/m/Y" }}
             {% if l.vencido %}<span class="badge text-bg-danger ms-1">Vencido</span>{% endif %}
           </td>
-          <td>R$ {{ l.valor }}</td>
-          R$ {{ l.total_baixado_agg|default:l.total_baixado }}
-          <td><strong>R$ {{ l.saldo }}</strong></td>
+          <td class="text-end">R$ {{ l.valor }}</td>
+          <td class="text-end">R$ {{ l.total_baixado_agg|default:l.total_baixado }}</td>
+          <td class="text-end"><strong>R$ {{ l.saldo }}</strong></td>
           <td>
             <span class="badge text-bg-{% if l.status == 'LIQUIDADO' %}success{% elif l.status == 'PARCIAL' %}primary{% elif l.status == 'CANCELADO' %}secondary{% else %}warning text-dark{% endif %}">
               {{ l.get_status_display }}
@@ -124,10 +142,10 @@
             {% endif %}
 
             {% if l.status != "CANCELADO" and l.status != "LIQUIDADO" and l.total_baixado == 0 %}
-            <form method="post" action="{% url 'financeiro:cancelar' l.id %}" onsubmit="return confirm('Cancelar este lançamento?');">
-            {% csrf_token %}
-            <button class="btn btn-sm btn-outline-danger"><i class="fa-solid fa-ban"></i></button>
-            </form>
+              <form method="post" action="{% url 'financeiro:cancelar' l.id %}" onsubmit="return confirm('Cancelar este lançamento?');">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-outline-danger"><i class="fa-solid fa-ban"></i></button>
+              </form>
             {% endif %}
           </td>
         </tr>
@@ -389,22 +407,6 @@
   </div></div>
 </div>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <div class="btn-group">
-    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#lancamentoModal" data-mode="create">
-      <i class="fa-solid fa-plus"></i> Novo Lançamento
-    </button>
-    <button class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#recorrenciaModal">
-      <i class="fa-solid fa-bolt"></i> Recorrência
-    </button>
-    <!-- 👇 novo botão -->
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#mensalidadesModal">
-      <i class="fa-solid fa-receipt"></i> Gerar Mensalidades
-    </button>
-  </div>
-  <a class="btn btn-outline-primary" href="{% url 'financeiro:exportar' %}?{{ base_qs }}"><i class="fa-solid fa-file-export"></i> Exportar Excel</a>
-</div>
-
 <!-- Modal Mensalidades -->
 <div class="modal fade" id="mensalidadesModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog"><div class="modal-content">
@@ -443,9 +445,30 @@
   </div></div>
 </div>
 
+<!-- Modal Nova Categoria -->
+<div class="modal fade" id="categoriaModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <form method="post" action="{% url 'financeiro:categoria_create' %}">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">Nova Categoria</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label">Nome</label>
+        <input name="nome" class="form-control" required placeholder="Ex.: Mensalidades, Serviços, Materiais">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancelar</button>
+        <button class="btn btn-primary" type="submit">Salvar</button>
+      </div>
+    </form>
+  </div></div>
+</div>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
+  // Modal Lançamento (create/edit)
   const lancModal = document.getElementById('lancamentoModal');
   const lancForm = document.getElementById('lancForm');
   const title = lancModal.querySelector('.modal-title');
@@ -469,7 +492,7 @@ document.addEventListener("DOMContentLoaded", function() {
       setVal('descricao', btn.getAttribute('data-descricao'));
       setVal('valor', btn.getAttribute('data-valor'));
       setVal('vencimento', btn.getAttribute('data-vencimento'));
-      setSel('status', btn.getAttribute('data-status')); // hidden por padrão (ABERTO), mas aceita edição
+      setSel('status', btn.getAttribute('data-status')); // hidden default "ABERTO" (aceita edição)
 
       setSel('cliente', btn.getAttribute('data-cliente'));
       setSel('funcionario', btn.getAttribute('data-funcionario'));
@@ -486,6 +509,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   });
 
+  // Modal Baixa
   const baixaModal = document.getElementById('baixaModal');
   const baixaForm = document.getElementById('baixaForm');
   const saldoSpan = document.getElementById('saldoSpan');

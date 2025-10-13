@@ -10,6 +10,47 @@
   </div>
 {% endif %}
 
+<form method="post" action="{% url 'turmas:presenca_criar' %}" class="card card-body mb-3">
+  {% csrf_token %}
+  <input type="hidden" name="turma_id" value="{{ turma.id }}">
+  <div class="row g-2 align-items-end">
+    <div class="col-auto">
+      <label class="form-label mb-1">Criar lista (data única)</label>
+      <input type="date" name="data" class="form-control" required>
+    </div>
+    <div class="col">
+      <label class="form-label mb-1">Observação</label>
+      <input type="text" name="observacao_geral" class="form-control" placeholder="Opcional">
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-primary mt-3">Criar</button>
+    </div>
+  </div>
+</form>
+
+<form method="post" action="{% url 'turmas:presenca_auto' %}" class="card card-body mb-4">
+  {% csrf_token %}
+  <input type="hidden" name="turma_id" value="{{ turma.id }}">
+  <div class="row g-2 align-items-end">
+    <div class="col-auto">
+      <label class="form-label mb-1">Gerar em lote — de</label>
+      <input type="date" name="data_de" class="form-control" required>
+    </div>
+    <div class="col-auto">
+      <label class="form-label mb-1">até</label>
+      <input type="date" name="data_ate" class="form-control" required>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-success mt-3">Gerar automaticamente</button>
+    </div>
+  </div>
+  <div class="form-text mt-2">
+    Respeita os dias ativos e a vigência da turma. Já existentes são ignoradas.
+  </div>
+</form>
+
+
+
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <h4 class="mb-1">Listas de Presença — {{ turma.modalidade.nome }} / {{ turma.condominio.nome }}</h4>
@@ -58,7 +99,6 @@
         <tr>
           <th>Data</th>
           <th>Presentes</th>
-          <th>Total itens</th>
           <th>Observação</th>
           <th style="width: 120px;">Ações</th>
         </tr>
@@ -72,7 +112,6 @@
               {{ l.total_presentes_count|default:0 }}
             </span>
           </td>
-          <td>{{ l.total_itens_count|default:0 }}</td>
           <td class="text-truncate" style="max-width: 420px;">{{ l.observacao_geral }}</td>
           <td>
             <a class="btn btn-sm btn-outline-primary" href="{% url 'turmas:presenca_detalhe' l.id %}">

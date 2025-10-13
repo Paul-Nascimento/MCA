@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest
-
+from .forms import LancamentoForm, FiltroFinanceiroForm, BaixaForm, RecorrenciaMensalForm, CategoriaFinanceiraForm
 from .models import Lancamento
 from .forms import LancamentoForm, FiltroFinanceiroForm, BaixaForm, RecorrenciaMensalForm
 from . import services as fs
@@ -50,6 +50,7 @@ def list_financeiro(request: HttpRequest):
         "lancamento_form": LancamentoForm(),
         "baixa_form": BaixaForm(),
         "recorr_form": RecorrenciaMensalForm(),
+        "categoria_form": CategoriaFinanceiraForm(),  # 👈 novo
     })
 
 @login_required
@@ -230,4 +231,20 @@ def gerar_mensalidades_view(request: HttpRequest):
     except Exception as e:
         messages.error(request, f"Falha ao gerar mensalidades: {e}")
 
+    return redirect(reverse("financeiro:list"))
+
+
+@login_required
+def create_categoria_view(request: HttpRequest):
+    if request.method != "POST":
+        return HttpResponseBadRequest("Somente POST.")
+    form = CategoriaFinanceiraForm(request.POST)
+    if form.is_valid():
+        try:
+            form.save()
+            messages.success(request, "Categoria criada.")
+        except Exception as e:
+            messages.error(request, f"Erro ao criar categoria: {e}")
+    else:
+        messages.error(request, f"Dados inválidos: {form.errors.as_json()}")
     return redirect(reverse("financeiro:list"))

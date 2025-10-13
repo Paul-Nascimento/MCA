@@ -254,7 +254,7 @@ def _matriculas_ativas_no_mes_global(ano: int, mes: int):
     """Todas matrículas ativas que cruzam a competência (qualquer dia no mês)."""
     inicio_mes, fim_mes = _primeiro_ultimo_dia(ano, mes)
     return (Matricula.objects
-            .select_related("cliente", "turma", "turma__modalidade", "turma__condominio")
+            .select_related("cliente", "turma", "turma__modalidade", "turma__modalidade__condominio")
             .filter(ativa=True)
             .filter(Q(data_fim__isnull=True) | Q(data_fim__gte=inicio_mes))
             .filter(data_inicio__lte=fim_mes))
@@ -263,7 +263,7 @@ def _matriculas_ativas_no_mes_da_turma(turma: Turma, ano: int, mes: int):
     """Matrículas ativas no mês, apenas da turma informada."""
     inicio_mes, fim_mes = _primeiro_ultimo_dia(ano, mes)
     return (Matricula.objects
-            .select_related("cliente", "turma", "turma__modalidade", "turma__condominio")
+            .select_related("cliente", "turma", "turma__modalidade", "turma__modalidade__condominio")
             .filter(turma=turma, ativa=True)
             .filter(Q(data_fim__isnull=True) | Q(data_fim__gte=inicio_mes))
             .filter(data_inicio__lte=fim_mes))
@@ -342,7 +342,7 @@ def gerar_cobrancas_mensalidade_turma(
     Se já existir cobrança daquele cliente no mês, não cria novamente.
     Retorna: {"criados": X, "existentes": Y, "turma": turma_id, "vencimento": date}
     """
-    turma = Turma.objects.select_related("modalidade", "condominio").filter(id=turma_id, ativo=True).first()
+    turma = Turma.objects.select_related("modalidade", "modalidade__condominio").filter(id=turma_id, ativo=True).first()
     if not turma:
         raise ValueError("Turma não encontrada ou inativa.")
 

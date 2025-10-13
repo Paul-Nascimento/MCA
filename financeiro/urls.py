@@ -12,5 +12,7 @@ urlpatterns = [
     path("financeiro/baixa/<int:baixa_id>/estornar/", views.estornar_baixa_view, name="estornar"),
     path("financeiro/recorrencia/", views.gerar_recorrencia_view, name="recorrencia"),
     path("financeiro/exportar/", views.exportar_financeiro_view, name="exportar"),
-     path("financeiro/mensalidades/", views.gerar_mensalidades_view, name="mensalidades"),
+    path("financeiro/mensalidades/", views.gerar_mensalidades_view, name="mensalidades"),
+    path("financeiro/categorias/criar/", views.create_categoria_view, name="categoria_create"),
+
 ]

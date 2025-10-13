@@ -5,5 +5,142 @@
 
 <h3 class="mb-3">Visão Geral</h3>
 
+<div class="row g-3 mb-4">
+  <!-- A RECEBER -->
+  <div class="col-md-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="text-muted small">A Receber (saldo)</div>
+            <div class="h4 mb-0">R$ {{ total_receber|floatformat:2|intcomma }}</div>
+          </div>
+          <div class="badge text-bg-success">+</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- A PAGAR -->
+  <div class="col-md-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="text-muted small">A Pagar (saldo)</div>
+            <div class="h4 mb-0">R$ {{ total_pagar|floatformat:2|intcomma }}</div>
+          </div>
+          <div class="badge text-bg-danger">−</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FATURAMENTO PREVISTO -->
+  <div class="col-md-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Faturamento previsto*</div>
+        <div class="h4 mb-2">R$ {{ faturamento_previsto|floatformat:2|intcomma }}</div>
+        <div class="small text-muted">*Matrículas ativas × valor/preço da turma</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OCUPAÇÃO MÉDIA -->
+  <div class="col-md-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div class="text-muted small">Ocupação média de turmas</div>
+          <div class="small text-muted">{{ ocupacao_percentual }}%</div>
+        </div>
+        <div class="progress mt-2" role="progressbar" aria-label="Taxa de ocupação">
+          <div class="progress-bar" style="width: {{ ocupacao_percentual }}%"></div>
+        </div>
+        <div class="small text-muted mt-2">(% matrículas ativas ÷ vagas totais)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Próximos a Receber -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Próximos vencimentos — A Receber</strong>
+        <a href="{% url 'financeiro:list' %}?tipo=RECEBER" class="btn btn-sm btn-outline-primary">Ver tudo</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Vencimento</th>
+              <th>Descrição</th>
+              <th>Cliente</th>
+              <th class="text-end">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in proximos_receber %}
+              <tr>
+                <td>{{ l.vencimento|date:"d/m/Y" }}</td>
+                <td>{{ l.descricao }}</td>
+                <td>
+                  {% if l.cliente %}{{ l.cliente.nome_razao }}{% else %}{{ l.contraparte_nome }}{% endif %}
+                </td>
+                <td class="text-end">R$ {{ l.valor|floatformat:2|intcomma }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="4" class="text-center py-3">Sem registros.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Próximos a Pagar -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Próximos vencimentos — A Pagar</strong>
+        <a href="{% url 'financeiro:list' %}?tipo=PAGAR" class="btn btn-sm btn-outline-primary">Ver tudo</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Vencimento</th>
+              <th>Descrição</th>
+              <th>Contraparte</th>
+              <th class="text-end">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in proximos_pagar %}
+              <tr>
+                <td>{{ l.vencimento|date:"d/m/Y" }}</td>
+                <td>{{ l.descricao }}</td>
+                <td>
+                    {% if l.cliente %}{{ l.cliente.nome_razao }}
+                    {% elif l.funcionario %}{{ l.funcionario.nome }}
+                    {% elif l.condominio %}{{ l.condominio.nome }}
+                    {% elif l.turma %}{{ l.turma }}
+                    {% else %}{{ l.contraparte_nome }}{% endif %}
+                    </td>
+
+                <td class="text-end">R$ {{ l.valor|floatformat:2|intcomma }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="4" class="text-center py-3">Sem registros.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
 
 {% endblock %}
