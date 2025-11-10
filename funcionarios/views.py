@@ -6,39 +6,37 @@ from django.urls import reverse
 
 from .forms import FuncionarioForm, FuncionarioFiltroForm, ImportacaoExcelForm
 from . import services as cs
-
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
-from . import services as fs
 from .models import Funcionario
+
+from django.core.paginator import Paginator
+
 
 @login_required
 def list_funcionarios(request):
     q = request.GET.get("q", "").strip()
     ativo = request.GET.get("ativo")
-    regime = request.GET.get("regime")  # valor do choice
+    regime = request.GET.get("regime")
+    cargo = request.GET.get("cargo")
 
     ativo_bool = None
     if ativo in ("1", "0"):
         ativo_bool = (ativo == "1")
 
-    qs = fs.buscar_funcionarios(q=q, ativo=True, regime=regime)
+    qs = cs.buscar_funcionarios(q=q, ativo=ativo_bool, regime=regime, cargo=cargo)
 
-    print(qs)
-    # paginação (se você já usa seu helper, mantenha; aqui é Django puro)
-    from django.core.paginator import Paginator
     page = max(1, int(request.GET.get("page", "1") or 1))
     page_obj = Paginator(qs, 20).get_page(page)
 
     return render(request, "funcionarios/list.html", {
-        
         "page_obj": page_obj,
         "q": q,
         "ativo": ativo,
         "regime": regime,
+        "cargo": cargo,
+        "CARGOS": Funcionario.Cargo.choices,
         "REGIMES": Funcionario.RegimeTrabalhista.choices,
-        "base_qs": f"&q={q}&ativo={ativo}&regime={regime}",
-        "funcionario_form": FuncionarioForm()
+        "base_qs": f"&q={q}&ativo={ativo}&regime={regime}&cargo={cargo}",
+        "funcionario_form": FuncionarioForm()  # form no modal (vazio)
     })
 
 
@@ -46,6 +44,7 @@ def list_funcionarios(request):
 def create_funcionario(request: HttpRequest):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")
+
     form = FuncionarioForm(request.POST)
     if form.is_valid():
         try:
@@ -54,13 +53,16 @@ def create_funcionario(request: HttpRequest):
         except Exception as e:
             messages.error(request, f"Erro ao criar: {e}")
     else:
-        messages.error(request, "Dados inválidos.")
+        messages.error(request, "Dados inválidos. Verifique os campos obrigatórios.")
+
     return redirect(reverse("funcionarios:list"))
+
 
 @login_required
 def update_funcionario(request: HttpRequest, pk: int):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")
+
     form = FuncionarioForm(request.POST)
     if form.is_valid():
         try:
@@ -70,7 +72,9 @@ def update_funcionario(request: HttpRequest, pk: int):
             messages.error(request, f"Erro ao atualizar: {e}")
     else:
         messages.error(request, "Dados inválidos.")
+
     return redirect(reverse("funcionarios:list"))
+
 
 @login_required
 def exportar_funcionarios_view(request: HttpRequest):
@@ -82,10 +86,12 @@ def exportar_funcionarios_view(request: HttpRequest):
     resp["Content-Disposition"] = f'attachment; filename=\"{filename}\"'
     return resp
 
+
 @login_required
 def importar_funcionarios_view(request: HttpRequest):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")
+
     form = ImportacaoExcelForm(request.POST, request.FILES)
     if not form.is_valid():
         messages.error(request, "Envie um arquivo .xlsx válido.")
@@ -105,4 +111,5 @@ def importar_funcionarios_view(request: HttpRequest):
             messages.warning(request, f"Erros (parcial): {preview}")
     except Exception as e:
         messages.error(request, f"Falha na importação: {e}")
+
     return redirect(reverse("funcionarios:list"))

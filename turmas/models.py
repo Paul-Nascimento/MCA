@@ -19,6 +19,13 @@ DIAS_SEMANA = [
 ]
 
 
+from django.db import models
+from django.core.validators import MinValueValidator
+from decimal import Decimal
+from datetime import datetime, timedelta
+from typing import List
+from django.core.exceptions import ValidationError
+
 class Turma(models.Model):
     # Relações
     professor = models.ForeignKey(
@@ -26,7 +33,6 @@ class Turma(models.Model):
         on_delete=models.PROTECT,
         related_name="turmas",
     )
-
     modalidade = models.ForeignKey(
         "modalidades.Modalidade",
         on_delete=models.CASCADE,
@@ -35,20 +41,26 @@ class Turma(models.Model):
 
     # Regras da turma
     nome_exibicao = models.CharField("Nome (opcional)", max_length=255, blank=True)
-    valor = models.DecimalField(
-        "Valor",
-        max_digits=10,
-        decimal_places=2,
-        validators=[MinValueValidator(Decimal("0.00"))],
-    )
-    capacidade = models.PositiveIntegerField(
-        "Capacidade (máx. alunos)", validators=[MinValueValidator(1)]
-    )
+    valor = models.DecimalField("Valor Aula", max_digits=10, decimal_places=2,
+                                validators=[MinValueValidator(Decimal("0.00"))])
+    valor_dsr = models.DecimalField("Valor + DSR", max_digits=10, decimal_places=2,
+                                    validators=[MinValueValidator(Decimal("0.00"))],
+                                    default=Decimal("0.00"))
+    vale_transporte = models.DecimalField("VT/VA", max_digits=10, decimal_places=2,
+                                          validators=[MinValueValidator(Decimal("0.00"))],
+                                          default=Decimal("0.00"))
+    bonificacao = models.DecimalField("Bonificação", max_digits=10, decimal_places=2,
+                                      validators=[MinValueValidator(Decimal("0.00"))],
+                                      default=Decimal("0.00"), blank=True,null=True)
+    observacoes = models.TextField("Observações", blank=True, null=True)
+
+    capacidade = models.PositiveIntegerField("Capacidade (máx. alunos)",
+                                             validators=[MinValueValidator(1)])
 
     hora_inicio = models.TimeField(default="18:00")
     duracao_minutos = models.PositiveIntegerField(default=60)
 
-    # Flags de dia (novo modelo)
+    # Dias da semana
     seg = models.BooleanField("Seg", default=False)
     ter = models.BooleanField("Ter", default=False)
     qua = models.BooleanField("Qua", default=False)
@@ -69,7 +81,6 @@ class Turma(models.Model):
         ordering = ["modalidade__condominio__nome", "modalidade__nome", "hora_inicio", "id"]
         indexes = [
             models.Index(fields=["professor", "hora_inicio"]),
-            # REMOVIDO: models.Index(fields=["condominio"]),
             models.Index(fields=["ativo"]),
         ]
         verbose_name = "Turma"
@@ -77,7 +88,6 @@ class Turma(models.Model):
 
     def clean(self):
         super().clean()
-        # REMOVIDO: checagem de modalidade x condominio da própria turma
         if not any([self.seg, self.ter, self.qua, self.qui, self.sex, self.sab, self.dom]):
             raise ValidationError("Selecione ao menos um dia da semana.")
         if self.fim_vigencia and self.fim_vigencia < self.inicio_vigencia:
@@ -85,31 +95,17 @@ class Turma(models.Model):
 
     @property
     def condominio(self):
-        """Compat: permite usar turma.condominio como antes."""
         return self.modalidade.condominio
 
-    
-
     def dias_ativos(self) -> List[int]:
-        """Retorna os índices weekday() ativos: Seg=0 ... Dom=6."""
         m = {"seg": 0, "ter": 1, "qua": 2, "qui": 3, "sex": 4, "sab": 5, "dom": 6}
-        return [
-            m[k]
-            for k, v in {
-                "seg": self.seg,
-                "ter": self.ter,
-                "qua": self.qua,
-                "qui": self.qui,
-                "sex": self.sex,
-                "sab": self.sab,
-                "dom": self.dom,
-            }.items()
-            if v
-        ]
+        return [m[k] for k, v in {
+            "seg": self.seg, "ter": self.ter, "qua": self.qua, "qui": self.qui,
+            "sex": self.sex, "sab": self.sab, "dom": self.dom
+        }.items() if v]
 
     @property
     def hora_fim(self):
-        """Retorna um time aproximado somando a duração à hora de início."""
         dt = datetime.combine(self.inicio_vigencia, self.hora_inicio) + timedelta(
             minutes=self.duracao_minutos
         )
@@ -117,7 +113,6 @@ class Turma(models.Model):
 
     @property
     def ocupacao(self) -> int:
-        """Total de matrículas ATIVAS (capacidade ocupada atual)."""
         return self.matriculas.filter(ativa=True).count()
 
     @property
@@ -219,7 +214,7 @@ class Matricula(models.Model):
 
     # Participante (se vazio => o aluno é o próprio cliente)
     participante_nome = models.CharField(max_length=255, blank=True)
-    participante_cpf = models.CharField(max_length=14, blank=True)  # armazene limpo
+    participante_data_nascimento = models.DateField(null=True, blank=True)
     participante_sexo = models.CharField(
         max_length=1, choices=SEXO_CHOICES, blank=True
     )

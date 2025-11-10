@@ -13,20 +13,29 @@
 <!-- Filtros -->
 <form method="get" class="card card-body mb-3">
   <div class="row g-2 align-items-end">
-    <div class="col-md-6">
+    <div class="col-md-4">
       <label class="form-label">Busca</label>
-      <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Nome ou e-mail">
+      <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Nome, e-mail ou CPF">
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       <label class="form-label">Situação</label>
       <select name="ativo" class="form-select">
-        <option value="" {% if ativo == None or ativo == '' %}selected{% endif %}>— Todos —</option>
+        <option value="" {% if ativo == '' or ativo == None %}selected{% endif %}>— Todos —</option>
         <option value="1" {% if ativo == '1' %}selected{% endif %}>Ativos</option>
         <option value="0" {% if ativo == '0' %}selected{% endif %}>Inativos</option>
       </select>
     </div>
     <div class="col-md-3">
-      <label class="form-label">Regime trabalhista</label>
+      <label class="form-label">Cargo</label>
+      <select name="cargo" class="form-select">
+        <option value="">— Todos —</option>
+        {% for value, label in CARGOS %}
+          <option value="{{ value }}" {% if value == cargo %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Regime Trabalhista</label>
       <select name="regime" class="form-select">
         <option value="">— Todos —</option>
         {% for value, label in REGIMES %}
@@ -34,19 +43,16 @@
         {% endfor %}
       </select>
     </div>
-    <div class="col-12 col-md-3 d-grid">
-      <button class="btn btn-primary" type="submit">
-        <i class="fa-solid fa-magnifying-glass"></i> Filtrar
-      </button>
+    <div class="col-12 col-md-3 d-grid mt-2">
+      <button class="btn btn-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> Filtrar</button>
     </div>
   </div>
 </form>
 
 <!-- Ações -->
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <div class="btn-group">
-    <button type="button" class="btn btn-success"
-            data-bs-toggle="modal" data-bs-target="#funcModal" data-mode="create">
+  <div>
+    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#funcModal" data-mode="create">
       <i class="fa-solid fa-user-plus"></i> Novo Funcionário
     </button>
   </div>
@@ -54,8 +60,7 @@
     <a class="btn btn-outline-primary" href="{% url 'funcionarios:exportar' %}">
       <i class="fa-solid fa-file-export"></i> Exportar Excel
     </a>
-    <button type="button" class="btn btn-outline-dark"
-            data-bs-toggle="modal" data-bs-target="#importModal">
+    <button type="button" class="btn btn-outline-dark" data-bs-toggle="modal" data-bs-target="#importModal">
       <i class="fa-solid fa-file-import"></i> Importar Excel
     </button>
   </div>
@@ -71,7 +76,10 @@
           <th>Nome</th>
           <th>E-mail</th>
           <th>Telefone</th>
-          <th>Regime Trabalhista</th>
+          <th>Cargo</th>
+          <th>Nascimento</th>
+          <th>Admissão</th>
+          <th>Regime</th>
           <th>Ativo</th>
           <th style="width: 90px;">Ações</th>
         </tr>
@@ -83,6 +91,9 @@
           <td>{{ f.nome }}</td>
           <td>{{ f.email }}</td>
           <td>{{ f.telefone }}</td>
+          <td>{{ f.get_cargo_display }}</td>
+          <td>{{ f.data_nascimento|date:"d/m/Y" }}</td>
+          <td>{{ f.data_admissao|date:"d/m/Y" }}</td>
           <td>{{ f.get_regime_trabalhista_display }}</td>
           <td>
             {% if f.ativo %}
@@ -101,6 +112,12 @@
                     data-nome="{{ f.nome|escape }}"
                     data-email="{{ f.email|default_if_none:'' }}"
                     data-telefone="{{ f.telefone|default_if_none:'' }}"
+                    data-rg="{{ f.rg|default_if_none:'' }}"
+                    data-registro_cref="{{ f.registro_cref|default_if_none:'' }}"
+                    data-tam_uniforme="{{ f.tam_uniforme|default_if_none:'' }}"
+                    data-data_nascimento="{{ f.data_nascimento }}"
+                    data-data_admissao="{{ f.data_admissao }}"
+                    data-cargo="{{ f.cargo }}"
                     data-regime="{{ f.regime_trabalhista }}"
                     data-ativo="{{ f.ativo|yesno:'1,0' }}">
               <i class="fa-solid fa-pen"></i>
@@ -108,7 +125,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="7" class="text-center py-4">Nenhum funcionário encontrado.</td></tr>
+        <tr><td colspan="10" class="text-center py-4">Nenhum funcionário encontrado.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -161,28 +178,59 @@
               <label class="form-label">CPF/CNPJ</label>
               <input name="cpf_cnpj" class="form-control" required>
             </div>
+            <div class="col-md-4">
+              <label class="form-label">RG</label>
+              <input name="rg" class="form-control">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Registro CREF</label>
+              <input name="registro_cref" class="form-control">
+            </div>
+
             <div class="col-md-8">
               <label class="form-label">Nome</label>
               <input name="nome" class="form-control" required>
             </div>
-
-            <div class="col-md-6">
-              <label class="form-label">E-mail</label>
-              <input name="email" type="email" class="form-control">
+            <div class="col-md-4">
+              <label class="form-label">Cargo</label>
+              <select name="cargo" class="form-select">
+                {% for value, label in CARGOS %}
+                  <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+              </select>
             </div>
-            <div class="col-md-6">
+
+            <div class="col-md-4">
               <label class="form-label">Telefone</label>
               <input name="telefone" class="form-control">
             </div>
+            <div class="col-md-4">
+              <label class="form-label">E-mail</label>
+              <input name="email" type="email" class="form-control">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Tamanho Uniforme</label>
+              <input name="tam_uniforme" class="form-control">
+            </div>
 
-            <div class="col-md-6">
-              <label class="form-label">Regime trabalhista</label>
+            <div class="col-md-4">
+              <label class="form-label">Data Nascimento</label>
+              <input type="date" name="data_nascimento" class="form-control">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Data Admissão</label>
+              <input type="date" name="data_admissao" class="form-control">
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Regime Trabalhista</label>
               <select name="regime_trabalhista" class="form-select">
                 {% for value, label in REGIMES %}
                   <option value="{{ value }}">{{ label }}</option>
                 {% endfor %}
               </select>
             </div>
+
             <div class="col-md-3 form-check mt-4">
               <input class="form-check-input" type="checkbox" name="ativo" id="ativoFun" checked>
               <label class="form-check-label" for="ativoFun">Ativo</label>
@@ -210,9 +258,7 @@
         </div>
         <div class="modal-body">
           <input type="file" name="arquivo" accept=".xlsx" class="form-control" required>
-          <small class="text-muted d-block mt-2">
-            Colunas reconhecidas: CPF/CNPJ, Nome, E-mail, Telefone, Ativo.
-          </small>
+          <small class="text-muted">Colunas: CPF/CNPJ, Nome, E-mail, Telefone, Cargo, Nascimento, Admissão, Ativo.</small>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
@@ -223,18 +269,16 @@
   </div>
 </div>
 
-<!-- Script do modal (Bootstrap 5) -->
+<!-- Script Modal -->
 <script>
 document.addEventListener("DOMContentLoaded", function() {
   const modal = document.getElementById('funcModal');
-  if (!modal) return;
-
-  const form  = document.getElementById('funcForm');
+  const form = document.getElementById('funcForm');
   const title = modal.querySelector('.modal-title');
 
   modal.addEventListener('show.bs.modal', function (event) {
     const button = event.relatedTarget;
-    const mode   = button?.getAttribute('data-mode') || 'create';
+    const mode = button?.getAttribute('data-mode') || 'create';
 
     form.reset();
     form.action = "{% url 'funcionarios:create' %}";
@@ -247,13 +291,19 @@ document.addEventListener("DOMContentLoaded", function() {
 
       const setVal = (name, value) => {
         const el = form.querySelector(`[name="${name}"]`);
-        if (el) el.value = (value ?? '');
+        if (el) el.value = value || '';
       };
 
-      setVal('cpf_cnpj',  button.getAttribute('data-cpf_cnpj'));
-      setVal('nome',      button.getAttribute('data-nome'));
-      setVal('email',     button.getAttribute('data-email'));
-      setVal('telefone',  button.getAttribute('data-telefone'));
+      setVal('cpf_cnpj', button.getAttribute('data-cpf_cnpj'));
+      setVal('rg', button.getAttribute('data-rg'));
+      setVal('registro_cref', button.getAttribute('data-registro_cref'));
+      setVal('tam_uniforme', button.getAttribute('data-tam_uniforme'));
+      setVal('nome', button.getAttribute('data-nome'));
+      setVal('email', button.getAttribute('data-email'));
+      setVal('telefone', button.getAttribute('data-telefone'));
+      setVal('cargo', button.getAttribute('data-cargo'));
+      setVal('data_nascimento', button.getAttribute('data-data_nascimento'));
+      setVal('data_admissao', button.getAttribute('data-data_admissao'));
       setVal('regime_trabalhista', button.getAttribute('data-regime'));
 
       const ativoEl = form.querySelector('[name="ativo"]');

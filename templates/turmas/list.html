@@ -260,7 +260,25 @@
               <label class="form-label">Capacidade</label>
               <input name="capacidade" type="number" min="1" class="form-control" required>
             </div>
+            <div class="col-md-3">
+              <label class="form-label">Valor + DSR</label>
+              <input name="valor_dsr" type="number" step="0.01" class="form-control">
+          </div>
 
+          <div class="col-md-3">
+              <label class="form-label">VT / VA</label>
+              <input name="vale_transporte" type="number" step="0.01" class="form-control">
+          </div>
+
+          <div class="col-md-3">
+              <label class="form-label">Bonificação</label>
+              <input name="bonificacao" type="number" step="0.01" class="form-control">
+          </div>
+
+          <div class="col-md-12">
+              <label class="form-label">Observações</label>
+              <textarea name="obs" rows="2" class="form-control"></textarea>
+          </div>
             <!-- Checkboxes de dias -->
             <div class="col-12">
               <label class="form-label d-block mb-1">Dias da semana</label>
@@ -370,9 +388,9 @@
               <input name="participante_nome" class="form-control">
             </div>
             <div class="col-md-4">
-              <label class="form-label">Participante — CPF</label>
-              <input name="participante_cpf" class="form-control">
-            </div>
+            <label class="form-label">Participante — Data de nascimento</label>
+            <input name="participante_data_nascimento" type="date" class="form-control">
+          </div>
             <div class="col-md-2">
               <label class="form-label">Sexo</label>
               <select name="participante_sexo" class="form-select">

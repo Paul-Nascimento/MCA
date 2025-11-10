@@ -117,14 +117,27 @@ def importar_excel(file) -> dict:
     """
     Espera um .xlsx com cabeçalhos:
     cpf_cnpj,nome_razao,data_nascimento,telefone_emergencial,telefone_celular,
-    cep,numero_id,logradouro,bairro,complemento,municipio,estado,email,ativo
+    cep,numero_id,logradouro,bairro,complemento,municipio,estado,email,ativo,condominio_id
     """
     from openpyxl import load_workbook
+    from django.core.exceptions import ValidationError
+    # from .models import Cliente  # ajuste o import conforme seu app
+
+    def _to_int(val):
+        # Lida com células numéricas (float do Excel) ou strings
+        if val is None or val == "":
+            return None
+        try:
+            return int(str(val).strip().replace(".0", ""))
+        except (ValueError, TypeError):
+            return None
+
     wb = load_workbook(file, read_only=True, data_only=True)
     ws = wb.active
     headers = [str((c.value or "")).strip() for c in next(ws.rows)]
     idx = {h: i for i, h in enumerate(headers)}
-    required = ["cpf_cnpj","nome_razao"]
+
+    required = ["cpf_cnpj", "nome_razao", "condominio_id"]
     for r in required:
         if r not in idx:
             raise ValidationError(f"Coluna obrigatória ausente: {r}")
@@ -132,6 +145,9 @@ def importar_excel(file) -> dict:
     created = updated = skipped = 0
     for row in ws.iter_rows(min_row=2):
         get = lambda h: (row[idx[h]].value if h in idx else None)
+
+        condominio_id = _to_int(get("condominio_id"))
+
         data = {
             "cpf_cnpj": clean_doc(str(get("cpf_cnpj") or "")),
             "nome_razao": str(get("nome_razao") or "").strip(),
@@ -146,17 +162,20 @@ def importar_excel(file) -> dict:
             "municipio": str(get("municipio") or "").strip(),
             "estado": str(get("estado") or "").strip(),
             "email": str(get("email") or "").strip(),
+            "condominio_id": condominio_id,
         }
+
         ativo_val = get("ativo")
         if ativo_val is not None:
             data["ativo"] = bool(ativo_val in (1, "1", True, "True", "true", "SIM", "Sim", "sim"))
 
-        if not data["cpf_cnpj"] or not data["nome_razao"]:
+        # validações mínimas
+        if not data["cpf_cnpj"] or not data["nome_razao"] or not condominio_id:
             skipped += 1
             continue
 
-        # upsert por documento
-        obj = Cliente.objects.filter(cpf_cnpj=data["cpf_cnpj"]).first()
+        # upsert por cpf_cnpj + condominio_id
+        obj = Cliente.objects.filter(cpf_cnpj=data["cpf_cnpj"], condominio_id=condominio_id).first()
         if obj:
             for k, v in data.items():
                 setattr(obj, k, v)
@@ -167,6 +186,7 @@ def importar_excel(file) -> dict:
             created += 1
 
     return {"created": created, "updated": updated, "skipped": skipped}
+
 
 def exportar_excel(queryset=None) -> tuple[str, bytes]:
     from io import BytesIO

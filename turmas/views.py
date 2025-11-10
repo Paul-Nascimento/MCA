@@ -16,6 +16,7 @@ from . import services as ts
 
 from modalidades.models import Modalidade
 from funcionarios.models import Funcionario
+
 try:
     from clientes.models import Cliente
 except Exception:
@@ -32,7 +33,7 @@ DIAS_SEMANA = (
 )
 
 # ------------------------------------------------------------
-# Listagem
+# 📌 LISTAGEM DE TURMAS
 # ------------------------------------------------------------
 
 @login_required
@@ -40,9 +41,9 @@ def list_turmas(request: HttpRequest) -> HttpResponse:
     q = (request.GET.get("q") or "").strip()
     condominio_id = request.GET.get("condominio") or ""
     modalidade_id = request.GET.get("modalidade") or ""
-    professor_id  = request.GET.get("professor") or ""
-    dia_param     = request.GET.get("dia_semana") or ""
-    ativos_param  = request.GET.get("ativos", "")
+    professor_id = request.GET.get("professor") or ""
+    dia_param = request.GET.get("dia_semana") or ""
+    ativos_param = request.GET.get("ativos", "")
 
     qs = ts.buscar_turmas(
         q=q,
@@ -56,7 +57,7 @@ def list_turmas(request: HttpRequest) -> HttpResponse:
     page = max(1, int(request.GET.get("page", "1") or 1))
     page_obj = Paginator(qs, 20).get_page(page)
 
-    # combos de filtro
+    # Combos de filtro
     try:
         from condominios.models import Condominio
         condominios = Condominio.objects.filter(modalidade__isnull=False).distinct()
@@ -66,12 +67,12 @@ def list_turmas(request: HttpRequest) -> HttpResponse:
     modalidades = Modalidade.objects.all().order_by("nome")
     professores = Funcionario.objects.filter(ativo=True).order_by("nome")
 
-    # clientes para o modal de matrícula (limite 500)
+    # Clientes (para modal de matrícula, se existir)
     clientes = []
     if Cliente is not None:
         clientes = Cliente.objects.filter(ativo=True).order_by("nome_razao")[:500]
 
-    # sufixo para manter filtros
+    # Query string para manter filtros
     def _v(v: str) -> str:
         return v if v is not None else ""
     base_qs = f"q={_v(q)}&condominio={_v(condominio_id)}&modalidade={_v(modalidade_id)}&professor={_v(professor_id)}&dia_semana={_v(dia_param)}&ativos={_v(ativos_param)}"
@@ -79,19 +80,19 @@ def list_turmas(request: HttpRequest) -> HttpResponse:
 
     ctx = {
         "page_obj": page_obj,
-        "filtro_form": {"initial": {"q": q}},
         "q": q,
         "condominio_id": str(condominio_id),
         "modalidade_id": str(modalidade_id),
         "professor_id": str(professor_id),
         "dia_param": str(dia_param),
         "ativos_param": ativos_param,
-        "DIAS_SEMANA": DIAS_SEMANA,
 
         "condominios": condominios,
         "modalidades": modalidades,
         "professores": professores,
         "clientes": clientes,
+
+        "DIAS_SEMANA": DIAS_SEMANA,
 
         "base_qs": base_qs,
         "suffix": suffix,
@@ -99,15 +100,21 @@ def list_turmas(request: HttpRequest) -> HttpResponse:
     return render(request, "turmas/list.html", ctx)
 
 # ------------------------------------------------------------
-# Create / Update
+# CREATE / UPDATE
 # ------------------------------------------------------------
 
 @login_required
 @require_POST
 def create_turma(request: HttpRequest) -> HttpResponse:
+    """
+    Criação de nova turma com validação completa.
+    """
     form = TurmaForm(request.POST or None)
     if not form.is_valid():
-        messages.error(request, "Erro ao validar a turma: " + "; ".join([f"{k}: {', '.join(v)}" for k, v in form.errors.items()]))
+        messages.error(
+            request,
+            "Erro ao validar a turma: " + "; ".join([f"{k}: {', '.join(v)}" for k, v in form.errors.items()])
+        )
         return redirect(reverse("turmas:list"))
     try:
         ts.criar_turma(form.cleaned_data)
@@ -119,13 +126,21 @@ def create_turma(request: HttpRequest) -> HttpResponse:
         messages.success(request, "Turma criada com sucesso.")
     return redirect(reverse("turmas:list"))
 
+
 @login_required
 @require_POST
 def update_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
+    """
+    Atualização de turma existente.
+    """
     form = TurmaForm(request.POST or None)
     if not form.is_valid():
-        messages.error(request, "Erro ao validar a turma: " + "; ".join([f"{k}: {', '.join(v)}" for k, v in form.errors.items()]))
+        messages.error(
+            request,
+            "Erro ao validar a turma: " + "; ".join([f"{k}: {', '.join(v)}" for k, v in form.errors.items()])
+        )
         return redirect(reverse("turmas:list"))
+
     try:
         ts.atualizar_turma(turma_id, form.cleaned_data)
     except ValidationError as e:
@@ -136,18 +151,22 @@ def update_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
         messages.success(request, "Turma atualizada com sucesso.")
     return redirect(reverse("turmas:list"))
 
+
 # ------------------------------------------------------------
-# Exportação
+# EXPORTAÇÃO
 # ------------------------------------------------------------
 
 @login_required
 def exportar_turmas(request: HttpRequest) -> HttpResponse:
+    """
+    Exporta turmas para Excel respeitando filtros atuais da lista.
+    """
     q = (request.GET.get("q") or "").strip()
     condominio_id = request.GET.get("condominio") or ""
     modalidade_id = request.GET.get("modalidade") or ""
-    professor_id  = request.GET.get("professor") or ""
-    dia_param     = request.GET.get("dia_semana") or ""
-    ativos_param  = request.GET.get("ativos", "")
+    professor_id = request.GET.get("professor") or ""
+    dia_param = request.GET.get("dia_semana") or ""
+    ativos_param = request.GET.get("ativos", "")
 
     qs = ts.buscar_turmas(
         q=q,
@@ -159,15 +178,16 @@ def exportar_turmas(request: HttpRequest) -> HttpResponse:
     )
 
     filename, content = ts.exportar_turmas_excel(qs)
-    resp = HttpResponse(content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    resp["Content-Disposition"] = f'attachment; filename=\"{filename}\"'
+    resp = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
     return resp
 
 # ------------------------------------------------------------
-# Alunos da turma (link da listagem)
+# Alunos de uma turma (visualização detalhada da turma)
 # ------------------------------------------------------------
-
-from django.core.paginator import Paginator  # já importado no topo do arquivo
 
 @login_required
 def alunos_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
@@ -177,6 +197,7 @@ def alunos_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
         .filter(id=turma_id)
         .first()
     )
+
     if not turma:
         messages.error(request, "Turma não encontrada.")
         return redirect(reverse("turmas:list"))
@@ -185,14 +206,14 @@ def alunos_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
         from .models import Matricula
         qs = (
             turma.matriculas
-                .select_related("cliente")
-                .filter(ativa=True)
-                .order_by("cliente__nome_razao")
+            .select_related("cliente")
+            .filter(ativa=True)
+            .order_by("cliente__nome_razao")
         )
     except Exception:
-        qs = Matricula.objects.none()
+        qs = []
 
-    page = max(1, int(request.GET.get("page", "1") or 1))
+    page = max(1, int(request.GET.get("page", 1)))
     page_obj = Paginator(qs, 20).get_page(page)
 
     vagas = max(0, turma.capacidade - turma.ocupacao)
@@ -200,67 +221,77 @@ def alunos_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
     return render(
         request,
         "turmas/alunos.html",
-        {"turma": turma, "page_obj": page_obj, "vagas": vagas}
+        {"turma": turma, "page_obj": page_obj, "vagas": vagas},
     )
 
 
 # ------------------------------------------------------------
-# Matrículas
+# Matrícula de cliente em turma
 # ------------------------------------------------------------
-
 @login_required
 @require_POST
 def matricular_view(request: HttpRequest) -> HttpResponse:
-    """
-    Recebe POST do modal de matrícula.
-    Campos esperados: turma_id, cliente, data_inicio, participante_* e "é o próprio" (chkProprioAluno no front).
-    """
     try:
         turma_id = int(request.POST.get("turma_id") or 0)
         cliente_id = int(request.POST.get("cliente") or 0)
         data_inicio = request.POST.get("data_inicio")
+
         participante_nome = request.POST.get("participante_nome") or ""
-        participante_cpf = request.POST.get("participante_cpf") or ""
+        participante_data_nascimento = request.POST.get("participante_data_nascimento") or ""  # ✅ novo campo
         participante_sexo = request.POST.get("participante_sexo") or ""
-        proprio_cliente = (request.POST.get("proprio_cliente") or request.POST.get("chkProprioAluno") or "on")
-        proprio_cliente = str(proprio_cliente).lower() in ("1", "true", "on")
 
-        # tenta ler marcação vinda do form padrão
+        # checkbox "é o próprio cliente"
         raw_flag = request.POST.get("proprio_cliente") or request.POST.get("chkProprioAluno") or "on"
-        proprio_cliente = str(raw_flag).lower() in ("1", "true", "on")
+        proprio_cliente = str(raw_flag).lower() in ("on", "true", "1")
 
-        # mas SE houver dados de participante, forçamos "terceiro"
-        if any([participante_nome.strip(), participante_cpf.strip(), participante_sexo.strip()]):
+        # Se o usuário preencheu dados de participante, NÃO é o próprio cliente
+        if any([participante_nome.strip(), participante_data_nascimento.strip(), participante_sexo.strip()]):
             proprio_cliente = False
 
-        print('Aq')
-        print(participante_nome, participante_cpf, participante_sexo, proprio_cliente)
         if not turma_id or not cliente_id or not data_inicio:
             messages.error(request, "Informe turma, cliente e data de início.")
             return redirect(reverse("turmas:list"))
 
+        # Converter data de início da matrícula
         from datetime import date as _date
-        parts = [int(x) for x in str(data_inicio).split("-")]
-        data_inicio_dt = _date(parts[0], parts[1], parts[2])
+        y, m, d = [int(x) for x in data_inicio.split("-")]
+        data_inicio_dt = _date(y, m, d)
 
+        # Converter data de nascimento (se informada)
+        participante_data_nascimento_dt = None
+        if participante_data_nascimento:
+            try:
+                y2, m2, d2 = [int(x) for x in participante_data_nascimento.split("-")]
+                participante_data_nascimento_dt = _date(y2, m2, d2)
+            except ValueError:
+                messages.error(request, "Data de nascimento do participante inválida.")
+                return redirect(reverse("turmas:list"))
+
+        # Chamar service
         ts.matricular_cliente(
             turma_id=turma_id,
             cliente_id=cliente_id,
             data_inicio=data_inicio_dt,
             participante_nome=participante_nome,
-            participante_cpf=participante_cpf,
+            participante_data_nascimento=participante_data_nascimento_dt,  # ✅ alterado
             participante_sexo=participante_sexo,
             proprio_cliente=proprio_cliente,
         )
+
     except ValidationError as e:
-        print(e)
         messages.error(request, f"Não foi possível matricular: {e}")
     except Exception as e:
-        print(e)
-        messages.error(request, f"Erro interno ao matricular: {e}")
+        messages.error(request, f"Erro ao matricular: {e}")
     else:
         messages.success(request, "Matrícula realizada com sucesso.")
+
     return redirect(reverse("turmas:list"))
+
+
+
+# ------------------------------------------------------------
+# Desmatricular aluno da turma
+# ------------------------------------------------------------
 
 @login_required
 def desmatricular_view(request: HttpRequest, matricula_id: int) -> HttpResponse:
@@ -269,13 +300,14 @@ def desmatricular_view(request: HttpRequest, matricula_id: int) -> HttpResponse:
     except ValidationError as e:
         messages.error(request, f"Não foi possível desmatricular: {e}")
     except Exception as e:
-        messages.error(request, f"Erro interno ao desmatricular: {e}")
+        messages.error(request, f"Erro ao desmatricular: {e}")
     else:
         messages.success(request, "Matrícula desativada.")
     return redirect(reverse("turmas:list"))
 
+
 # ------------------------------------------------------------
-# Toggle Ativo/Inativo da turma
+# Alternar status ativo/inativo da turma
 # ------------------------------------------------------------
 
 @login_required
@@ -285,11 +317,12 @@ def toggle_status(request: HttpRequest, turma_id: int) -> HttpResponse:
     except Exception as e:
         messages.error(request, f"Não foi possível alterar o status: {e}")
     else:
-        messages.success(request, "Status da turma atualizado.")
+        messages.success(request, "Status da turma atualizado com sucesso.")
     return redirect(reverse("turmas:list"))
 
+
 # ------------------------------------------------------------
-# Selecionar cliente (iframe)
+# Selecionar cliente dentro de um modal ou popup (iframe)
 # ------------------------------------------------------------
 
 @login_required
@@ -300,16 +333,24 @@ def selecionar_cliente(request: HttpRequest, turma_id: int) -> HttpResponse:
         .filter(id=turma_id)
         .first()
     )
+
     if not turma:
         return HttpResponseBadRequest("Turma inválida.")
 
-    if Cliente is None:
-        clientes = []
+    if Cliente:
+        clientes = Cliente.objects.filter(
+            condominio=turma.modalidade.condominio,
+            ativo=True
+        ).order_by("nome_razao")
     else:
-        clientes = Cliente.objects.filter(condominio=turma.modalidade.condominio, ativo=True).order_by("nome_razao")
+        clientes = []
 
-    return render(request, "turmas/selecionar_cliente.html", {
-        "turma": turma,
-        "clientes": clientes,
-        "embed": request.GET.get("embed") == "1",
-    })
+    return render(
+        request,
+        "turmas/selecionar_cliente.html",
+        {
+            "turma": turma,
+            "clientes": clientes,
+            "embed": request.GET.get("embed") == "1",
+        }
+    )
