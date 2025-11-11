@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.humanize',
     'clientes',
     'condominios',
     'funcionarios',
@@ -44,7 +45,8 @@ INSTALLED_APPS = [
     "turmas",
     "financeiro",
     'notificacoes',
-    'django.contrib.humanize',
+    "parametros",
+    
 
 ]
 
@@ -54,8 +56,13 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+
+    'mca.middleware.ProfessorRestrictionMiddleware',  # nosso middleware personalizado
+
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
+   
 
     
 ]

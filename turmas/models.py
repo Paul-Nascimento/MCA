@@ -127,10 +127,27 @@ class Turma(models.Model):
 
 
 class ListaPresenca(models.Model):
+    OCORRENCIA_CHOICES = [
+        ("NORMAL", "Aula Normal"),
+        ("FALTA_PROF", "Falta do Professor"),
+        ("CANCELADA", "Aula Cancelada"),
+        ("SUBSTITUIDO", "Professor Substituído"),
+        ("REPOSICAO", "Aula de Reposição"),
+    ]
+
     turma = models.ForeignKey(
         "turmas.Turma", on_delete=models.PROTECT, related_name="listas_presenca"
     )
     data = models.DateField()
+
+    # ✅ Novo campo:
+    ocorrencia_aula = models.CharField(
+        max_length=20,
+        choices=OCORRENCIA_CHOICES,
+        default="NORMAL",
+        verbose_name="Ocorrência da aula"
+    )
+
     observacao_geral = models.TextField(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)

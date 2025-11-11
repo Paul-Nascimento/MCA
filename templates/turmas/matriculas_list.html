@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Matrículas — {{ turma }} | MCA{% endblock %}
+{% block content %}
+
+<h5 class="mb-2">Matrículas — {{ turma.modalidade.nome }}</h5>
+<p class="text-muted small mb-3">
+  Condomínio: {{ condominio.nome }} • Professor: {{ turma.professor.nome }}
+</p>
+
+<form method="get" class="card card-body mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-6">
+      <label class="form-label">Buscar cliente</label>
+      <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Nome ou CPF/CNPJ...">
+    </div>
+    <div class="col-md-2 d-grid">
+      <button class="btn btn-primary"><i class="fa fa-search"></i> Filtrar</button>
+    </div>
+  </div>
+</form>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Cliente</th>
+          <th>CPF/CNPJ</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+{% for c in clientes_page %}
+  <tr>
+    <td>{{ c.nome_razao }}</td>
+    <td>{{ c.cpf_cnpj }}</td>
+
+    <td class="text-end">
+
+      {% if c.id in matriculados_ids %}
+        <span class="badge text-bg-success">Matriculado</span>
+      {% else %}
+        <!-- Formulário separado só para matrícula -->
+        <form method="post" action="{% url 'turmas:matricular_direto' turma.id %}" style="display:inline;">
+          {% csrf_token %}
+          <input type="hidden" name="turma_id" value="{{ turma.id }}">
+          <input type="hidden" name="cliente" value="{{ c.id }}">
+          <input type="hidden" name="data_inicio" value="{{ hoje|date:'Y-m-d' }}">
+          <button class="btn btn-sm btn-success" type="submit">Matricular</button>
+        </form>
+      {% endif %}
+
+      <!-- Botão de dependente sempre visível -->
+      <button type="button"
+              class="btn btn-sm btn-outline-primary ms-1"
+              data-bs-toggle="modal"
+              data-bs-target="#dependenteModal"
+              data-turma="{{ turma.id }}"
+              data-cliente="{{ c.id }}"
+              data-cliente-nome="{{ c.nome_razao }}">
+        <i class="fa-solid fa-user-plus"></i>
+      </button>
+
+    </td>
+  </tr>
+{% empty %}
+  <tr><td colspan="6" class="text-center py-4">Nenhum cliente encontrado.</td></tr>
+{% endfor %}
+</tbody>
+
+
+    </table>
+  </div>
+
+  <div class="card-footer d-flex justify-content-between align-items-center">
+    <div>Página {{ clientes_page.number }} de {{ clientes_page.paginator.num_pages }}</div>
+    <nav>
+      <ul class="pagination mb-0">
+        {% if clientes_page.has_previous %}
+          <li class="page-item"><a class="page-link" href="?page={{ clientes_page.previous_page_number }}&q={{ q }}">Anterior</a></li>
+        {% endif %}
+        <li class="page-item active"><span class="page-link">{{ clientes_page.number }}</span></li>
+        {% if clientes_page.has_next %}
+          <li class="page-item"><a class="page-link" href="?page={{ clientes_page.next_page_number }}&q={{ q }}">Próxima</a></li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+</div>
+
+<!-- Modal de Cadastro de Dependente -->
+<div class="modal fade" id="dependenteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="dependenteForm" method="post" action="{% url 'turmas:cadastrar_dependente' %}">
+        {% csrf_token %}
+        <input type="hidden" name="turma_id">
+        <input type="hidden" name="cliente_id">
+
+        <div class="modal-header">
+          <h5 class="modal-title">Cadastrar Dependente</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label">Cliente Responsável</label>
+            <input type="text" name="cliente_nome" class="form-control" readonly>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Nome do Dependente</label>
+            <input type="text" name="participante_nome" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Data de Nascimento</label>
+            <input type="date" name="participante_data_nascimento" class="form-control">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Sexo</label>
+            <select name="participante_sexo" class="form-select">
+              <option value="">--</option>
+              <option value="M">M</option>
+              <option value="F">F</option>
+              <option value="O">Outro</option>
+            </select>
+          </div>
+
+          <!-- ✅ Novo campo: Data de início da matrícula -->
+          <div class="mb-3">
+            <label class="form-label">Data de Início da Matrícula</label>
+            <input type="date" name="data_inicio" class="form-control" value="{{ hoje|date:'Y-m-d' }}" required>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-primary" type="submit">Cadastrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const depModal = document.getElementById("dependenteModal");
+  const depForm = document.getElementById("dependenteForm");
+
+  depModal.addEventListener("show.bs.modal", function(ev) {
+    const btn = ev.relatedTarget;
+    depForm.querySelector('[name="turma_id"]').value = btn.getAttribute("data-turma") || "";
+    depForm.querySelector('[name="cliente_id"]').value = btn.getAttribute("data-cliente") || "";
+    depForm.querySelector('[name="cliente_nome"]').value = btn.getAttribute("data-cliente-nome") || "";
+
+    // define data atual por padrão
+    const hoje = new Date().toISOString().split("T")[0];
+    depForm.querySelector('[name="data_inicio"]').value = hoje;
+  });
+});
+</script>
+
+
+{% endblock %}
+

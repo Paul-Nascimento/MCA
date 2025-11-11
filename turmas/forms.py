@@ -121,8 +121,27 @@ class MatriculaForm(forms.Form):
 class ListaPresencaCreateForm(forms.Form):
     turma_id = forms.IntegerField()
     data = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
-    observacao_geral = forms.CharField(required=False)
 
+    # 🆕 Novo campo para ocorrência da aula
+    OCORRENCIA_CHOICES = [
+        ("NORMAL", "Aula Normal"),
+        ("FALTA_PROF", "Falta do Professor"),
+        ("CANCELADA", "Aula Cancelada"),
+        ("SUBSTITUIDO", "Professor Substituído"),
+        ("REPOSICAO", "Aula de Reposição"),
+    ]
+    ocorrencia_aula = forms.ChoiceField(
+        required=True,
+        choices=OCORRENCIA_CHOICES,
+        label="Ocorrência da Aula",
+        initial="NORMAL"
+    )
+
+    observacao_geral = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 2}),
+        label="Observações Gerais"
+    )
 
 class ListaPresencaRangeForm(forms.Form):
     turma_id = forms.IntegerField()
@@ -140,6 +159,21 @@ class ListaPresencaRangeForm(forms.Form):
 class ListaFiltroForm(forms.Form):
     data_de = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
     data_ate = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
+
+    # 🆕 Novo filtro (opcional)
+    OCORRENCIA_CHOICES = [
+        ("", "Todas"),
+        ("NORMAL", "Aula Normal"),
+        ("FALTA_PROF", "Falta do Professor"),
+        ("CANCELADA", "Aula Cancelada"),
+        ("SUBSTITUIDO", "Professor Substituído"),
+        ("REPOSICAO", "Aula de Reposição"),
+    ]
+    ocorrencia_aula = forms.ChoiceField(
+        required=False,
+        choices=OCORRENCIA_CHOICES,
+        label="Tipo de Ocorrência"
+    )
 
     def clean(self):
         cd = super().clean()

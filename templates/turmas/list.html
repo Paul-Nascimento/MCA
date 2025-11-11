@@ -135,53 +135,63 @@
           </td>
           <td>R$ {{ t.valor }}</td>
           <td class="d-flex gap-1 flex-wrap">
-            <button class="btn btn-sm btn-outline-primary"
-                    title="Editar turma"
-                    data-bs-toggle="modal"
-                    data-bs-target="#turmaModal"
-                    data-mode="edit"
-                    data-id="{{ t.id }}"
-                    data-professor="{{ t.professor.id }}"
-                    data-modalidade="{{ t.modalidade.id }}"
-                    data-condominio="{{ t.condominio.id }}"
-                    data-nome_exibicao="{{ t.nome_exibicao|default_if_none:''|escape }}"
-                    data-valor="{{ t.valor }}"
-                    data-capacidade="{{ t.capacidade }}"
-                    data-hora_inicio="{{ t.hora_inicio|time:'H:i' }}"
-                    data-duracao="{{ t.duracao_minutos }}"
-                    data-inicio_vigencia="{{ t.inicio_vigencia|date:'Y-m-d' }}"
-                    data-fim_vigencia="{{ t.fim_vigencia|date:'Y-m-d' }}"
-                    data-seg="{{ t.seg|yesno:'1,0' }}"
-                    data-ter="{{ t.ter|yesno:'1,0' }}"
-                    data-qua="{{ t.qua|yesno:'1,0' }}"
-                    data-qui="{{ t.qui|yesno:'1,0' }}"
-                    data-sex="{{ t.sex|yesno:'1,0' }}"
-                    data-sab="{{ t.sab|yesno:'1,0' }}"
-                    data-dom="{{ t.dom|yesno:'1,0' }}"
-                    data-ativo="{{ t.ativo|yesno:'1,0' }}">
-              <i class="fa-solid fa-pen"></i>
-            </button>
+        {% if request.user.funcionario.cargo == "PROF" %}
 
-            <button class="btn btn-sm btn-outline-success"
-                  title="Matricular cliente"
+          <!-- Professores só podem ver presenças -->
+          <a class="btn btn-sm btn-outline-dark"
+            title="Presenças"
+            href="{% url 'turmas:presencas_turma' turma_id=t.id %}">
+            <i class="fa-solid fa-clipboard-list"></i>
+          </a>
+        {% else %}
+          <!-- Outros usuários (admin, coordenação, etc.) -->
+          <button class="btn btn-sm btn-outline-primary"
+                  title="Editar turma"
                   data-bs-toggle="modal"
-                  data-bs-target="#matriculaModal"
-                  data-turma="{{ t.id }}">
-            <i class="fa-solid fa-user-plus"></i>
+                  data-bs-target="#turmaModal"
+                  data-mode="edit"
+                  data-id="{{ t.id }}"
+                  data-professor="{{ t.professor.id }}"
+                  data-modalidade="{{ t.modalidade.id }}"
+                  data-condominio="{{ t.condominio.id }}"
+                  data-nome_exibicao="{{ t.nome_exibicao|default_if_none:''|escape }}"
+                  data-valor="{{ t.valor }}"
+                  data-capacidade="{{ t.capacidade }}"
+                  data-hora_inicio="{{ t.hora_inicio|time:'H:i' }}"
+                  data-duracao="{{ t.duracao_minutos }}"
+                  data-inicio_vigencia="{{ t.inicio_vigencia|date:'Y-m-d' }}"
+                  data-fim_vigencia="{{ t.fim_vigencia|date:'Y-m-d' }}"
+                  data-seg="{{ t.seg|yesno:'1,0' }}"
+                  data-ter="{{ t.ter|yesno:'1,0' }}"
+                  data-qua="{{ t.qua|yesno:'1,0' }}"
+                  data-qui="{{ t.qui|yesno:'1,0' }}"
+                  data-sex="{{ t.sex|yesno:'1,0' }}"
+                  data-sab="{{ t.sab|yesno:'1,0' }}"
+                  data-dom="{{ t.dom|yesno:'1,0' }}"
+                  data-ativo="{{ t.ativo|yesno:'1,0' }}">
+            <i class="fa-solid fa-pen"></i>
           </button>
 
-            <a class="btn btn-sm btn-outline-secondary"
-               title="Ver alunos"
-               href="{% url 'turmas:alunos' t.id %}">
-              <i class="fa-solid fa-users"></i>
-            </a>
+          <a class="btn btn-sm btn-outline-success"
+            title="Matricular alunos"
+            href="{% url 'turmas:matriculas_turma' t.id %}">
+            <i class="fa-solid fa-user-plus"></i>
+          </a>
 
-            <a class="btn btn-sm btn-outline-dark"
-               title="Presenças"
-               href="{% url 'turmas:presencas_turma' turma_id=t.id %}">
-              <i class="fa-solid fa-clipboard-list"></i>
-            </a>
-          </td>
+          <a class="btn btn-sm btn-outline-secondary"
+            title="Ver alunos"
+            href="{% url 'turmas:alunos' t.id %}">
+            <i class="fa-solid fa-users"></i>
+          </a>
+
+          <a class="btn btn-sm btn-outline-dark"
+            title="Presenças"
+            href="{% url 'turmas:presencas_turma' turma_id=t.id %}">
+            <i class="fa-solid fa-clipboard-list"></i>
+          </a>
+        {% endif %}
+      </td>
+
         </tr>
         {% empty %}
         <tr><td colspan="8" class="text-center py-4">Nenhuma turma encontrada.</td></tr>

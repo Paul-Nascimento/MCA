@@ -58,6 +58,13 @@ def listas_da_turma(request: HttpRequest, turma_id: int):
         .filter(id=turma_id)
         .first()
     )
+
+
+    if hasattr(request.user, "funcionario") and request.user.funcionario.cargo == "PROF":
+        if turma.professor != request.user.funcionario:
+            messages.error(request, "Você não tem permissão para acessar esta turma.")
+            return redirect("turmas:list")
+        
     if not turma:
         messages.error(request, "Turma não encontrada.")
         return redirect(reverse("turmas:list"))
@@ -85,11 +92,7 @@ def listas_da_turma(request: HttpRequest, turma_id: int):
     )
 
     for lid in qs.values_list("id", flat=True):
-        try:
-            ps.sincronizar_itens_lista(lid)
-        except Exception:
-            # nunca quebra a página por detalhe de sync; seguimos
-            pass
+        ps.sincronizar_itens_lista(lid)
 
     if data_de:
         qs = qs.filter(data__gte=data_de)
@@ -263,4 +266,57 @@ def presenca_salvar_view(request: HttpRequest, lista_id: int):
         observacao_geral=obs_geral,
     )
     messages.success(request, "Lista salva.")
+    return redirect(reverse("turmas:presenca_detalhe", args=[lista_id]))
+
+
+# ----------------- Salvar checkboxes + ocorrência da aula -----------------
+@login_required
+@transaction.atomic
+def presenca_salvar_view(request: HttpRequest, lista_id: int):
+    if request.method != "POST":
+        return HttpResponseBadRequest("Somente POST.")
+
+    # Lista de IDs de itens marcados como presentes
+    presentes_ids = [int(x) for x in request.POST.getlist("presentes")]
+
+    # Observações individuais por item (name="obs_I{{ item.id }}")
+    obs_por_item = {}
+    for k, v in request.POST.items():
+        if k.startswith("obs_I"):
+            try:
+                iid = int(k[5:])
+                obs_por_item[iid] = (v or "").strip()
+            except Exception:
+                pass
+
+    # Observação geral e ocorrência da aula
+    obs_geral = (request.POST.get("observacao_geral") or "").strip()
+    ocorrencia_aula = request.POST.get("ocorrencia_aula") or "NORMAL"
+
+    # ✅ Atualiza lista com ocorrência e observações
+    from .models import ListaPresenca
+    lista = get_object_or_404(ListaPresenca, id=lista_id)
+    lista.observacao_geral = obs_geral
+    lista.ocorrencia_aula = ocorrencia_aula
+    lista.save(update_fields=["observacao_geral", "ocorrencia_aula", "updated_at"])
+
+    # ✅ Chama o service para salvar presenças normalmente
+    ps.salvar_presenca(
+        lista_id=lista_id,
+        presentes_ids=presentes_ids,
+        obs_por_item=obs_por_item,
+        observacao_geral=obs_geral,
+    )
+
+    # Mensagem adaptada conforme a ocorrência
+    ocorrencias_map = {
+        "NORMAL": "Lista salva — aula realizada normalmente.",
+        "FALTA_PROF": "Falta do professor registrada.",
+        "CANCELADA": "Aula cancelada registrada.",
+        "SUBSTITUIDO": "Aula registrada com professor substituto.",
+        "REPOSICAO": "Aula de reposição registrada.",
+    }
+    msg = ocorrencias_map.get(ocorrencia_aula, "Lista de presença salva.")
+    messages.success(request, msg)
+
     return redirect(reverse("turmas:presenca_detalhe", args=[lista_id]))

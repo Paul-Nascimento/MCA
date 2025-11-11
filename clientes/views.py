@@ -11,11 +11,23 @@ from .forms import ClienteForm, ClienteFiltroForm
 from .models import Cliente
 from . import services as cs
 
+from django.contrib.auth.decorators import login_required, user_passes_test
+
+def is_diretor(user):
+    return user.groups.filter(name='Diretoria').exists() or user.is_superuser
+
+def is_professor(user):
+    return user.groups.filter(name='Professor').exists()
+
+def is_estagiario(user):
+    return user.groups.filter(name='Estagiario').exists()
+
 # views.py
 UF_LIST = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG",
            "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"]
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def list_clientes(request: HttpRequest):
     f = ClienteFiltroForm(request.GET or None)
     cd = f.cleaned_data if f.is_valid() else {}
@@ -47,6 +59,7 @@ def list_clientes(request: HttpRequest):
 
 @require_http_methods(["POST"])
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def create_cliente(request: HttpRequest):
     form = ClienteForm(request.POST)
     if not form.is_valid():
@@ -65,6 +78,7 @@ def create_cliente(request: HttpRequest):
 
 @require_http_methods(["POST"])
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def update_cliente(request, pk):
     cliente = get_object_or_404(Cliente, pk=pk)
     form = ClienteForm(request.POST, instance=cliente)  # <- AQUI!
@@ -79,6 +93,7 @@ def update_cliente(request, pk):
 
 @require_http_methods(["POST"])
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def ativar_cliente(request: HttpRequest, pk: int):
     try:
         ativo = request.POST.get("ativo", "1") == "1"
@@ -91,6 +106,7 @@ def ativar_cliente(request: HttpRequest, pk: int):
 
 @require_http_methods(["POST"])
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def importar_excel_view(request: HttpRequest):
     f = request.FILES.get("arquivo")
     if not f:
@@ -110,6 +126,7 @@ def importar_excel_view(request: HttpRequest):
 
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def exportar(request: HttpRequest):
     qs = cs.buscar_clientes(
         q=request.GET.get("q", ""),
@@ -150,6 +167,7 @@ def aceite_contrato(request: HttpRequest, token: str):
 
 @require_POST
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def toggle_status(request, pk: int):
     c = get_object_or_404(Cliente, pk=pk)
     # Se estiver aguardando confirmação (tem token), não permite toggle

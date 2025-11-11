@@ -21,16 +21,32 @@
 <form id="presencaForm" method="post" action="{% url 'turmas:presenca_salvar' lista.id %}">
   {% csrf_token %}
 
+  <!-- ✅ Cabeçalho de ocorrência da aula -->
+  <div class="card border-success mb-3">
+    <div class="card-body row align-items-center g-3">
+      <div class="col-md-6">
+        <label class="form-label fw-bold">Ocorrência da aula</label>
+        <select name="ocorrencia_aula" id="ocorrencia_aula" class="form-select">
+          <option value="NORMAL" {% if lista.ocorrencia_aula == "NORMAL" %}selected{% endif %}>Aula Normal</option>
+          <option value="FALTA_PROF" {% if lista.ocorrencia_aula == "FALTA_PROF" %}selected{% endif %}>Falta do Professor</option>
+          <option value="CANCELADA" {% if lista.ocorrencia_aula == "CANCELADA" %}selected{% endif %}>Aula Cancelada</option>
+          <option value="SUBSTITUIDO" {% if lista.ocorrencia_aula == "SUBSTITUIDO" %}selected{% endif %}>Professor Substituído</option>
+          <option value="REPOSICAO" {% if lista.ocorrencia_aula == "REPOSICAO" %}selected{% endif %}>Aula de Reposição</option>
+        </select>
+        <div class="form-text">Selecione o tipo de ocorrência. Apenas aulas “Normais” e “Reposição” permitem marcar presença de alunos.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ Tabela de alunos -->
   <div class="card mb-3">
     <div class="card-header d-flex flex-wrap gap-2 align-items-center">
-      <strong>Alunos matriculados ({{ matriculas.count }})</strong>
+      <strong>Alunos matriculados ({{ itens|length }})</strong>
       <div class="ms-auto d-flex gap-2">
-        <!-- Agora marcam/desmarcam os checkboxes no cliente -->
         <button type="button" class="btn btn-sm btn-outline-success" onclick="setAll(true)">Marcar todos</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setAll(false)">Desmarcar todos</button>
-        <!-- Se ainda quiser revalidar no servidor, mantém o botão abaixo -->
         <button class="btn btn-sm btn-outline-primary" type="submit" name="action" value="sync">
-          Revalidar matrículas do dia
+          Revalidar matrículas
         </button>
       </div>
     </div>
@@ -38,35 +54,33 @@
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0">
         <thead>
-  <tr>
-    <th style="width: 3rem;"></th>
-    <th>Cliente (titular)</th>
-    <th>Aluno</th>
-    <th>Observação</th>
-  </tr>
-    </thead>
-    <tbody>
-      {% for item in itens %}
-        <tr>
-          <td class="text-center align-middle">
-            <input class="form-check-input" type="checkbox" name="presentes"
-                  value="{{ item.id }}" {% if item.id in presente_ids %}checked{% endif %}>
-          </td>
-          <td class="align-middle">
-            {{ item.cliente.nome_razao }}
-          </td>
-          <td class="align-middle">
-            {{ item.cliente_nome_snapshot }}
-          </td>
-          <td>
-            <input type="text" class="form-control" name="obs_I{{ item.id }}"
-              value="{{ item.observacao|default_if_none:'' }}">
-
-          </td>
-        </tr>
-      {% endfor %}
-    </tbody>
-
+          <tr>
+            <th style="width: 3rem;" class="text-center">Presença</th>
+            <th>Cliente (titular)</th>
+            <th>Aluno</th>
+            <th>Observação</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in itens %}
+            <tr>
+              <td class="text-center align-middle">
+                <input class="form-check-input aluno-checkbox"
+                       type="checkbox"
+                       name="presentes"
+                       value="{{ item.id }}"
+                       {% if item.id in presente_ids %}checked{% endif %}>
+              </td>
+              <td class="align-middle">{{ item.cliente.nome_razao }}</td>
+              <td class="align-middle">{{ item.cliente_nome_snapshot }}</td>
+              <td>
+                <input type="text" class="form-control"
+                       name="obs_I{{ item.id }}"
+                       value="{{ item.observacao|default_if_none:'' }}">
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
       </table>
     </div>
 
@@ -84,10 +98,23 @@
 </form>
 
 <script>
+  // Marca/desmarca todos os checkboxes de presença
   function setAll(checked) {
-    // marca/desmarca todos os checkboxes de presença visíveis no DOM
-    document.querySelectorAll('input[name="presentes"]').forEach(cb => { cb.checked = checked; });
+    document.querySelectorAll('.aluno-checkbox:not(:disabled)').forEach(cb => { cb.checked = checked; });
   }
+
+  // Desabilita checkboxes se a aula não permitir presença
+  const ocorrenciaSelect = document.getElementById('ocorrencia_aula');
+  const alunoCheckboxes = document.querySelectorAll('.aluno-checkbox');
+
+  function toggleAlunoCheckboxes() {
+    const tipo = ocorrenciaSelect.value;
+    const podeMarcar = (tipo === "NORMAL" || tipo === "REPOSICAO");
+    alunoCheckboxes.forEach(cb => cb.disabled = !podeMarcar);
+  }
+
+  ocorrenciaSelect.addEventListener('change', toggleAlunoCheckboxes);
+  toggleAlunoCheckboxes();
 </script>
 
 {% endblock %}

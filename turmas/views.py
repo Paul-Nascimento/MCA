@@ -1,6 +1,14 @@
 from __future__ import annotations
-from typing import Optional
 
+from typing import Optional
+from datetime import date as _date
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import redirect
+from django.urls import reverse
+from django.core.exceptions import ValidationError
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
@@ -16,6 +24,8 @@ from . import services as ts
 
 from modalidades.models import Modalidade
 from funcionarios.models import Funcionario
+
+from django.contrib.auth.decorators import login_required, user_passes_test
 
 try:
     from clientes.models import Cliente
@@ -35,9 +45,30 @@ DIAS_SEMANA = (
 # ------------------------------------------------------------
 # 📌 LISTAGEM DE TURMAS
 # ------------------------------------------------------------
+def is_diretor(user):
+    return user.groups.filter(name='Diretoria').exists() or user.is_superuser
+
+def is_professor(user):
+    return user.groups.filter(name='Professor').exists()
+
+def is_estagiario(user):
+    return user.groups.filter(name='Estagiario').exists()
+
+
+
 
 @login_required
 def list_turmas(request: HttpRequest) -> HttpResponse:
+
+    user = request.user
+
+    # Se for professor, exibe apenas as turmas dele
+    if hasattr(user, "funcionario") and user.funcionario.cargo == "PROF":
+        turmas = Turma.objects.filter(professor=user.funcionario)
+    else:
+        turmas = Turma.objects.all()
+
+
     q = (request.GET.get("q") or "").strip()
     condominio_id = request.GET.get("condominio") or ""
     modalidade_id = request.GET.get("modalidade") or ""
@@ -53,6 +84,9 @@ def list_turmas(request: HttpRequest) -> HttpResponse:
         dia_semana=int(dia_param) if dia_param else None,
         ativos=(None if ativos_param == "" else (ativos_param == "1")),
     )
+
+    if hasattr(request.user, "funcionario") and request.user.funcionario.cargo == "PROF":
+        qs = qs.filter(professor=request.user.funcionario)
 
     page = max(1, int(request.GET.get("page", "1") or 1))
     page_obj = Paginator(qs, 20).get_page(page)
@@ -104,6 +138,7 @@ def list_turmas(request: HttpRequest) -> HttpResponse:
 # ------------------------------------------------------------
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 @require_POST
 def create_turma(request: HttpRequest) -> HttpResponse:
     """
@@ -128,6 +163,7 @@ def create_turma(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 @require_POST
 def update_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
     """
@@ -157,6 +193,7 @@ def update_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
 # ------------------------------------------------------------
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def exportar_turmas(request: HttpRequest) -> HttpResponse:
     """
     Exporta turmas para Excel respeitando filtros atuais da lista.
@@ -190,6 +227,7 @@ def exportar_turmas(request: HttpRequest) -> HttpResponse:
 # ------------------------------------------------------------
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def alunos_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
     turma = (
         Turma.objects
@@ -229,6 +267,7 @@ def alunos_turma(request: HttpRequest, turma_id: int) -> HttpResponse:
 # Matrícula de cliente em turma
 # ------------------------------------------------------------
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 @require_POST
 def matricular_view(request: HttpRequest) -> HttpResponse:
     try:
@@ -294,6 +333,7 @@ def matricular_view(request: HttpRequest) -> HttpResponse:
 # ------------------------------------------------------------
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def desmatricular_view(request: HttpRequest, matricula_id: int) -> HttpResponse:
     try:
         ts.desmatricular(matricula_id)
@@ -311,6 +351,7 @@ def desmatricular_view(request: HttpRequest, matricula_id: int) -> HttpResponse:
 # ------------------------------------------------------------
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def toggle_status(request: HttpRequest, turma_id: int) -> HttpResponse:
     try:
         ts.toggle_status(turma_id)
@@ -326,6 +367,7 @@ def toggle_status(request: HttpRequest, turma_id: int) -> HttpResponse:
 # ------------------------------------------------------------
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def selecionar_cliente(request: HttpRequest, turma_id: int) -> HttpResponse:
     turma = (
         Turma.objects
@@ -337,13 +379,14 @@ def selecionar_cliente(request: HttpRequest, turma_id: int) -> HttpResponse:
     if not turma:
         return HttpResponseBadRequest("Turma inválida.")
 
+    clientes = []
     if Cliente:
-        clientes = Cliente.objects.filter(
-            condominio=turma.modalidade.condominio,
-            ativo=True
-        ).order_by("nome_razao")
-    else:
-        clientes = []
+        # ✅ Só lista clientes do mesmo condomínio da modalidade da turma
+        clientes = (
+            Cliente.objects
+            .filter(condominio=turma.modalidade.condominio, ativo=True)
+            .order_by("nome_razao")
+        )
 
     return render(
         request,
@@ -354,3 +397,165 @@ def selecionar_cliente(request: HttpRequest, turma_id: int) -> HttpResponse:
             "embed": request.GET.get("embed") == "1",
         }
     )
+
+
+# turmas/views.py
+from django.core.paginator import Paginator
+from django.db.models import Q
+from django.views.decorators.http import require_POST
+from datetime import date as _date
+from .forms import MatriculaForm
+from .models import Matricula
+
+@user_passes_test(is_diretor,login_url="/turmas/")
+@login_required
+def matriculas_turma_view(request: HttpRequest, turma_id: int) -> HttpResponse:
+    turma = (
+        Turma.objects
+        .select_related("modalidade__condominio", "professor")
+        .filter(id=turma_id)
+        .first()
+    )
+    if not turma:
+        messages.error(request, "Turma não encontrada.")
+        return redirect(reverse("turmas:list"))
+
+    condominio = turma.modalidade.condominio
+
+    # 🔎 Filtros básicos de busca
+    q = (request.GET.get("q") or "").strip()
+    clientes_qs = Cliente.objects.filter(condominio=condominio, ativo=True)
+    if q:
+        clientes_qs = clientes_qs.filter(
+            Q(nome_razao__icontains=q) |
+            Q(cpf_cnpj__icontains=q)
+        )
+
+    # paginação
+    page = max(1, int(request.GET.get("page", "1") or 1))
+    page_obj = Paginator(clientes_qs.order_by("nome_razao"), 20).get_page(page)
+
+    # Matrículas já existentes
+    matriculas_existentes = Matricula.objects.filter(turma=turma, ativa=True)
+    matriculados_ids = set(matriculas_existentes.values_list("cliente_id", flat=True))
+    matriculas_proprias = matriculas_existentes.filter(participante_nome__exact="")
+
+    form = MatriculaForm(initial={"turma_id": turma.id})
+
+    ctx = {
+        "turma": turma,
+        "condominio": condominio,
+        "clientes_page": page_obj,
+        "matriculas":matriculas_proprias,
+        "matriculados_ids": matriculados_ids,
+        "form": form,
+        "q": q,
+    }
+    return render(request, "turmas/matriculas_list.html", ctx)
+
+
+from datetime import date
+@login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
+@require_POST
+def matricular_cliente_direto(request: HttpRequest, turma_id: int) -> HttpResponse:
+    form = MatriculaForm(request.POST)
+    cliente_id = request.POST.get("cliente_id")
+    print(cliente_id,form.data)
+    if not form.is_valid():
+        messages.error(request, "Dados inválidos para matrícula.")
+        print('erro',request)
+        #return redirect(reverse("turmas:matriculas_turma", args=[turma_id]))
+
+    try:
+        data = form.data
+        ts.matricular_cliente(
+            turma_id=turma_id,
+            cliente_id=data["cliente"],
+            data_inicio=date.today(),
+            participante_nome=data.get("participante_nome") or "",
+            participante_data_nascimento=data.get("participante_data_nascimento") or "",
+            participante_sexo=data.get("participante_sexo") or "",
+            proprio_cliente=not bool(data.get("participante_nome")),
+        )
+        messages.success(request, "Matrícula criada com sucesso.")
+    except Exception as e:
+        print(e )
+        messages.error(request, f"Erro ao matricular: {e}")
+
+    return redirect(reverse("turmas:matriculas_turma", args=[turma_id]))
+
+
+
+
+
+@login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
+@require_POST
+def cadastrar_dependente_view(request: HttpRequest) -> HttpResponse:
+    from . import services as ts
+
+    try:
+        turma_id = request.POST.get("turma_id")
+        cliente_id = request.POST.get("cliente_id")
+        participante_nome = (request.POST.get("participante_nome") or "").strip()
+        participante_data_nascimento = request.POST.get("participante_data_nascimento")
+        participante_sexo = request.POST.get("participante_sexo")
+        data_inicio_str = request.POST.get("data_inicio")
+
+        # 🧩 Log de debug opcional
+        print(f"[DEBUG] turma_id={turma_id}, cliente_id={cliente_id}, participante={participante_nome}, nascimento={participante_data_nascimento}, sexo={participante_sexo}, data_inicio={data_inicio_str}")
+
+        # 🔍 Validação básica
+        if not turma_id or not cliente_id or not participante_nome:
+            messages.error(request, "Preencha os campos obrigatórios.")
+            return redirect(request.META.get("HTTP_REFERER", reverse("turmas:list")))
+
+        # ✅ Converter data de nascimento (opcional)
+        participante_data_nasc_dt = None
+        if participante_data_nascimento:
+            try:
+                y, m, d = [int(x) for x in participante_data_nascimento.split("-")]
+                participante_data_nasc_dt = _date(y, m, d)
+            except Exception:
+                messages.error(request, "Data de nascimento inválida.")
+                return redirect(request.META.get("HTTP_REFERER", reverse("turmas:list")))
+
+        # ✅ Converter data de início (obrigatória)
+        if not data_inicio_str:
+            data_inicio = _date.today()
+        else:
+            try:
+                y2, m2, d2 = [int(x) for x in data_inicio_str.split("-")]
+                data_inicio = _date(y2, m2, d2)
+            except Exception:
+                messages.error(request, "Data de início inválida.")
+                return redirect(request.META.get("HTTP_REFERER", reverse("turmas:list")))
+
+        # ✅ Chama o service que já cria a matrícula
+        matricula = ts.matricular_cliente(
+            turma_id=turma_id,
+            cliente_id=cliente_id,
+            data_inicio=data_inicio,
+            participante_nome=participante_nome,
+            participante_data_nascimento=participante_data_nasc_dt,
+            participante_sexo=participante_sexo,
+            proprio_cliente=False,
+        )
+
+        # 🔔 Mensagem de sucesso
+        if matricula:
+            messages.success(request, f"Dependente '{participante_nome}' matriculado com sucesso!")
+        else:
+            messages.warning(request, "A matrícula não foi criada — verifique regras de duplicidade.")
+
+    except ValidationError as e:
+        messages.error(request, f"Não foi possível cadastrar o dependente: {e}")
+    except Exception as e:
+        import traceback
+        print("❌ Erro ao cadastrar dependente:", e)
+        traceback.print_exc()
+        messages.error(request, f"Erro inesperado ao matricular dependente: {e}")
+
+    return redirect(request.META.get("HTTP_REFERER", reverse("turmas:list")))
+

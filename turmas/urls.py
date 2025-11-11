@@ -37,4 +37,27 @@ urlpatterns = [
     path("turmas/presencas/auto/", views_presenca.gerar_listas_automaticas_view, name="presenca_auto"),
     path("turmas/presencas/<int:lista_id>/", views_presenca.presenca_detalhe, name="presenca_detalhe"),
     path("turmas/presencas/<int:lista_id>/salvar/", views_presenca.presenca_salvar_view, name="presenca_salvar"),
+    path(
+        "turmas/presencas/<int:lista_id>/ocorrencia/",
+        views_presenca.presenca_salvar_view,
+        name="presenca_ocorrencia",
+    ),
+
+        path(
+        "turmas/<int:turma_id>/matriculas/",
+        views.matriculas_turma_view,
+        name="matriculas_turma",
+    ),
+    path(
+    "turmas/<int:turma_id>/matricular-direto/",
+    views.matricular_cliente_direto,
+    name="matricular_direto",
+),
+
+path("turmas/dependente/cadastrar/", views.cadastrar_dependente_view, name="cadastrar_dependente"),
+
+
+
+    
+    
 ]

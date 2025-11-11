@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Parâmetros | MCA{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h2 class="mb-4">Parâmetros do Sistema</h2>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <form method="post" class="card card-body shadow-sm">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label class="form-label">Nome do Modelo</label>
+      {{ form.nome }}
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Assunto do E-mail</label>
+      {{ form.assunto_email }}
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Corpo do E-mail (HTML)</label>
+      {{ form.corpo_email }}
+      <small class="text-muted">Você pode usar variáveis como .</small>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Corpo do Contrato (HTML)</label>
+      {{ form.corpo_contrato }}
+      <small class="text-muted">Use HTML básico e variáveis como.</small>
+    </div>
+
+    <div class="form-check mb-3">
+      {{ form.ativo }} <label class="form-check-label">Ativo</label>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+  </form>
+</div>
+{% endblock %}

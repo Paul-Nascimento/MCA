@@ -7,7 +7,20 @@ from .forms import CondominioForm, CondominioFiltroForm, ImportacaoExcelForm
 from .models import UF_CHOICES
 from . import services as cs
 
+
+from django.contrib.auth.decorators import login_required, user_passes_test
+
+def is_diretor(user):
+    return user.groups.filter(name='Diretoria').exists() or user.is_superuser
+
+def is_professor(user):
+    return user.groups.filter(name='Professor').exists()
+
+def is_estagiario(user):
+    return user.groups.filter(name='Estagiario').exists()
+
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def list_condominios(request: HttpRequest):
     # filtros
     q = request.GET.get("q", "").strip()
@@ -53,6 +66,7 @@ def list_condominios(request: HttpRequest):
     })
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def create_condominio(request: HttpRequest):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")
@@ -68,6 +82,7 @@ def create_condominio(request: HttpRequest):
     return redirect(reverse("condominios:list"))
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def update_condominio(request: HttpRequest, pk: int):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")
@@ -83,6 +98,7 @@ def update_condominio(request: HttpRequest, pk: int):
     return redirect(reverse("condominios:list"))
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def exportar_condominios_view(request: HttpRequest):
     filename, content = cs.exportar_condominios_para_excel()
     resp = HttpResponse(
@@ -93,6 +109,7 @@ def exportar_condominios_view(request: HttpRequest):
     return resp
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def importar_condominios_view(request: HttpRequest):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")

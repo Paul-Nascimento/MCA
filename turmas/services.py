@@ -145,53 +145,85 @@ from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
 from .models import Turma
+from .models import Matricula
+from clientes.models import Cliente
 
 # ------------------------------------------------------------
 # Matrículas
 # ------------------------------------------------------------
-@transaction.atomic
+from django.core.exceptions import ValidationError
+
 def matricular_cliente(
-    *,
     turma_id: int,
     cliente_id: int,
     data_inicio: date,
-    participante_nome: str = "",
-    participante_data_nascimento: date = None,   # ✅ novo campo
-    participante_sexo: str = "",
-    proprio_cliente: bool = True
+    participante_nome: str | None = None,
+    participante_data_nascimento: date | None = None,
+    participante_sexo: str | None = None,
+    proprio_cliente: bool = True,
 ):
     """
-    Cria uma matrícula. Se 'proprio_cliente=True', ignora informações de participante.
-    Caso contrário, usa participante_nome + data_nascimento + sexo.
+    Cria uma matrícula para o cliente ou dependente.
+    Usa a lógica de capacidade e ocupação do model Turma.
     """
-    from .models import Matricula
 
-    if not cliente_id:
-        raise ValidationError("Cliente é obrigatório.")
+    turma = Turma.objects.get(id=turma_id)
+    cliente = Cliente.objects.get(id=cliente_id)
 
-    if proprio_cliente:
-        p_nome = ""
-        p_data_nasc = None
-        p_sexo = ""
-    else:
-        p_nome = (participante_nome or "").strip()
-        p_data_nasc = participante_data_nascimento
-        p_sexo = (participante_sexo or "").strip()
-
-        # (Opcional) Validar que, se tem nome, precisa de data de nascimento
-        if p_nome and not p_data_nasc:
-            raise ValidationError("Informe a data de nascimento do participante.")
-
-    obj = Matricula.objects.create(
-        turma_id=turma_id,
-        cliente_id=cliente_id,
-        data_inicio=data_inicio,
-        ativa=True,
-        participante_nome=p_nome,
-        participante_data_nascimento=p_data_nasc,   # ✅ ALTERADO AQUI
-        participante_sexo=p_sexo,
+    print(
+        f"Tentando matricular: turma={turma}, cliente={cliente}, "
+        f"proprio_cliente={proprio_cliente}, participante={participante_nome}"
     )
-    return obj
+
+    # 🚫 Checa se a turma já está lotada (usa a propriedade do model)
+    if turma.lotada:
+        raise ValidationError(
+            f"A turma '{turma}' já atingiu sua capacidade máxima de {turma.capacidade} alunos."
+        )
+
+    # 🔍 1. Caso seja o próprio cliente
+    if proprio_cliente:
+        participante_nome = ""
+        participante_data_nascimento = None
+        participante_sexo = ""
+
+        # Evita duplicidade do titular
+        if Matricula.objects.filter(
+            turma=turma, cliente=cliente, participante_nome="", ativa=True
+        ).exists():
+            raise ValidationError("Este cliente já está matriculado nesta turma.")
+
+    # 🔍 2. Caso seja dependente
+    else:
+        if not participante_nome:
+            raise ValidationError("Informe o nome do dependente.")
+
+        # Evita duplicidade do mesmo dependente
+        if Matricula.objects.filter(
+            turma=turma,
+            cliente=cliente,
+            participante_nome__iexact=participante_nome.strip(),
+            ativa=True,
+        ).exists():
+            raise ValidationError(
+                f"O dependente '{participante_nome}' já está matriculado nesta turma."
+            )
+
+    # ✅ Cria a matrícula
+    matricula = Matricula.objects.create(
+        turma=turma,
+        cliente=cliente,
+        data_inicio=data_inicio,
+        participante_nome=(participante_nome or "").strip(),
+        participante_data_nascimento=participante_data_nascimento,
+        participante_sexo=(participante_sexo or "").strip(),
+        ativa=True,
+    )
+
+    return matricula
+
+
+
 
 @transaction.atomic
 def desmatricular(matricula_id: int):

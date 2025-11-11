@@ -463,3 +463,102 @@ def gerar_cobrancas_mensalidades_global(
         criados += 1
 
     return {"criados": criados, "existentes": existentes, "ano": ano, "mes": mes, "dia_venc": dia_venc}
+
+from decimal import Decimal
+from datetime import timedelta
+
+def calcular_valor_a_pagar_professor(*, 
+    valor_hora: Decimal, 
+    valor_vr: Decimal, 
+    valor_dsr: Decimal, 
+    qtd_aulas: int, 
+    duracao_minutos: int
+) -> Decimal:
+    """
+    Calcula o valor total a pagar ao professor com base na fórmula:
+      (VR + (Hora + DSR) * qtd_aulas * qtd_horas_por_aula)
+
+    Onde:
+      - VR: valor fixo (ex: vale transporte)
+      - Hora: valor base da hora/aula
+      - DSR: valor adicional de descanso semanal remunerado
+      - qtd_aulas: número total de aulas no período
+      - duracao_minutos: duração de cada aula em minutos (1 a 60 = 1 hora)
+
+    Retorna o total a pagar em Decimal.
+    """
+    # converte a duração em horas — qualquer coisa entre 1 e 60 = 1h
+    qtd_horas_por_aula = max(1, duracao_minutos // 60 or 1)
+
+    total_horas = qtd_aulas * qtd_horas_por_aula
+    valor_por_hora = valor_hora + valor_dsr
+    total = (valor_vr + (valor_por_hora * total_horas)).quantize(Decimal("0.01"))
+
+    return total
+
+from decimal import Decimal
+from datetime import date
+from django.db import transaction
+from financeiro.models import Lancamento
+from turmas.models import Turma
+
+def calcular_valor_a_pagar_professor(
+    valor_hora: Decimal,
+    valor_vr: Decimal,
+    valor_dsr: Decimal,
+    qtd_aulas: int,
+    duracao_minutos: int
+) -> Decimal:
+    """
+    Fórmula: (VR) + (Hora + DSR) * qtd_aulas * qtd_horas_por_aula
+    """
+    qtd_horas_por_aula = max(1, duracao_minutos // 60 or 1)
+    total = (valor_vr + (valor_hora + valor_dsr) * qtd_aulas * qtd_horas_por_aula).quantize(Decimal("0.01"))
+    return total
+
+
+@transaction.atomic
+def gerar_pagamentos_professores(ano: int, mes: int) -> dict:
+    """
+    Gera lançamentos a pagar para todos os professores com base nas turmas ativas.
+    Supõe que o pagamento mensal seja proporcional ao número de aulas semanais * 4.
+    """
+    turmas = Turma.objects.filter(ativo=True).select_related("professor", "modalidade")
+    criados = 0
+    for t in turmas:
+        # Calcula número de dias de aula semanais (ex: seg/qua/sex = 3 dias)
+        qtd_dias_semana = sum([t.seg, t.ter, t.qua, t.qui, t.sex, t.sab, t.dom])
+        qtd_aulas = qtd_dias_semana * 4  # média de 4 semanas/mês
+
+        valor_total = calcular_valor_a_pagar_professor(
+            valor_hora=t.valor,
+            valor_vr=t.vale_transporte or Decimal("0.00"),
+            valor_dsr=t.valor_dsr or Decimal("0.00"),
+            qtd_aulas=qtd_aulas,
+            duracao_minutos=t.duracao_minutos
+        )
+
+        descricao = f"Pagamento Professor {t.professor.nome} — {t.modalidade.nome} ({mes:02d}/{ano})"
+        observacao = f"{qtd_aulas} aulas de {t.duracao_minutos} min • {t.modalidade.nome}"
+
+        # evita duplicidade
+        if Lancamento.objects.filter(
+            tipo="PAGAR",
+            funcionario=t.professor,
+            descricao__icontains=f"{mes:02d}/{ano}",
+            status__in=["ABERTO", "PARCIAL", "LIQUIDADO"]
+        ).exists():
+            continue
+
+        Lancamento.objects.create(
+            tipo="PAGAR",
+            descricao=descricao,
+            valor=valor_total,
+            vencimento=date(ano, mes, 5),
+            funcionario=t.professor,
+            observacao=observacao,
+            status="ABERTO",
+        )
+        criados += 1
+
+    return {"criados": criados, "mes": mes, "ano": ano}

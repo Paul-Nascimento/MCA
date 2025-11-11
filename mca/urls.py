@@ -20,6 +20,7 @@ urlpatterns = [
     path("", include(("modalidades.urls", "modalidades"), namespace="modalidades")),
     path("", include(("turmas.urls", "turmas"), namespace="turmas")),
     path("", include(("financeiro.urls", "financeiro"), namespace="financeiro")),
+    path("parametros/", include("parametros.urls")),
 
     # home
     

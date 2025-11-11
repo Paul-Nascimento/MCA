@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if contrato %}Editar Contrato | {{ contrato.nome }}{% else %}Novo Contrato{% endif %}
+{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">
+  {% if contrato %}Editar Contrato — {{ contrato.nome }}{% else %}Novo Contrato{% endif %}
+</h3>
+
+<form method="post" class="card card-body shadow-sm">
+  {% csrf_token %}
+  <div class="mb-3">
+    <label class="form-label">Nome do Modelo</label>
+    {{ form.nome }}
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Assunto do E-mail</label>
+    {{ form.assunto_email }}
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Corpo do E-mail (HTML)</label>
+    {{ form.corpo_email }}
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Corpo do Contrato (HTML)</label>
+    {{ form.corpo_contrato }}
+  </div>
+
+  <div class="form-check mb-3">
+    {{ form.ativo }} <label class="form-check-label">Ativo</label>
+  </div>
+
+  <div class="d-flex justify-content-between">
+    <a href="{% url 'parametros:listar_contratos' %}" class="btn btn-secondary">
+      <i class="fa-solid fa-arrow-left"></i> Voltar
+    </a>
+    <button type="submit" class="btn btn-primary">
+      <i class="fa-solid fa-save"></i> {% if contrato %}Salvar Alterações{% else %}Criar Contrato{% endif %}
+    </button>
+  </div>
+</form>
+{% endblock %}

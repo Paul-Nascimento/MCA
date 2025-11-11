@@ -1,4 +1,5 @@
 from __future__ import annotations
+from django.shortcuts import get_object_or_404
 from typing import Optional, Iterable, Dict
 from datetime import date, timedelta
 
@@ -16,21 +17,25 @@ class ListaJaExiste(Exception):
 
 # ===== Helpers =====
 
-def _matriculas_ativas_na_data(turma_id: int, d: date):
-    """
-    Matrículas ativas na data d:
-      - data_inicio <= d
-      - (data_fim é nula ou >= d)
-      - ativa=True
-    """
+def _matriculas_ativas_na_data(lista: ListaPresenca):
+    d = lista.data
     return (
-        Matricula.objects.select_related("cliente")
-        .filter(turma_id=turma_id, ativa=True)
-        .filter(data_inicio__lte=d)
+        Matricula.objects
+        .select_related("cliente")
+        .filter(
+            turma=lista.turma,
+            ativa=True,
+            data_inicio__lte=d
+        )
         .filter(Q(data_fim__isnull=True) | Q(data_fim__gte=d))
         .order_by("cliente__nome_razao", "id")
     )
 
+def _snapshots_from_matricula(m: Matricula) -> tuple[str, str]:
+    nome = (m.participante_nome or m.cliente.nome_razao or "").strip()
+    # ❗ Não existe mais participante_cpf; use outra info ou vazio
+    doc  = (m.cliente.cpf_cnpj or "").strip()
+    return nome, doc
 
 def _vigente_na_data(turma: Turma, d: date) -> bool:
     if d < turma.inicio_vigencia:
@@ -79,23 +84,11 @@ def listas_da_turma(turma_id: int, data_de: Optional[date] = None, data_ate: Opt
 
 
 def abrir_lista(lista_id: int):
-    """
-    Carrega a lista de presença e os itens (1 por MATRÍCULA) já ordenados por nome snapshot.
-    """
-    lista = (
-        ListaPresenca.objects
-        .select_related("turma", "turma__modalidade__condominio", "turma__professor")
-        .filter(id=lista_id)
-        .first()
-    )
-    if not lista:
-        raise ObjectDoesNotExist("Lista não encontrada.")
-
-    itens = (
-        ItemPresenca.objects
-        .select_related("cliente", "matricula")
-        .filter(lista_id=lista.id)
-        .order_by("cliente_nome_snapshot", "id")
+    lista = get_object_or_404(ListaPresenca.objects.select_related("turma", "turma__modalidade", "turma__modalidade__condominio", "turma__professor"), id=lista_id)
+    itens = list(
+        lista.itens
+        .select_related("cliente")
+        .order_by("cliente__nome_razao", "id")
     )
     return lista, itens
 
@@ -162,92 +155,75 @@ def criar_lista_presenca(*, turma_id: int, d: date, observacao_geral: str = "") 
 
 
 @transaction.atomic
-def sincronizar_itens_lista(lista_id: int) -> Dict[str, int]:
-    """
-    Garante que a lista tenha itens para TODAS as matrículas ativas na data da lista.
-    - Adiciona itens faltantes (por MATRÍCULA).
-    - Não remove itens existentes (mantém histórico manual).
-    Retorna {"adicionados": X, "existentes": Y}.
-    """
-    lista = ListaPresenca.objects.select_related("turma").filter(id=lista_id).first()
-    if not lista:
-        raise ObjectDoesNotExist("Lista não encontrada.")
+def sincronizar_itens_lista(lista_id: int) -> None:
+    lista = get_object_or_404(ListaPresenca, id=lista_id)
 
-    d = lista.data
-    turma_id = lista.turma_id
+    ativos = list(_matriculas_ativas_na_data(lista))
+    ativos_ids = {m.id for m in ativos}
 
-    atuais = {
-        it.matricula_id
-        for it in ItemPresenca.objects.filter(lista=lista).only("matricula_id")
-    }
-    adicionados = existentes = 0
+    existentes = list(
+        ItemPresenca.objects.filter(lista=lista).select_related("matricula", "cliente")
+    )
+    by_matricula = {it.matricula_id: it for it in existentes}
 
-    #print(f'Matriculas ativas')
-    #print(_matriculas_ativas_na_data(turma_id, d))
-    for m in _matriculas_ativas_na_data(turma_id, d):
-        if m.id in atuais:
-            existentes += 1
-            continue
-        nome_snap = (m.participante_nome or m.cliente.nome_razao).strip()
-        doc_snap = (m.participante_cpf or m.cliente.cpf_cnpj)
-        ItemPresenca.objects.create(
-            lista=lista,
-            cliente=m.cliente,
-            matricula=m,
-            presente=False,
-            observacao="",
-            cliente_nome_snapshot=nome_snap,
-            cliente_doc_snapshot=doc_snap,
-        )
-        adicionados += 1
+    # cria/atualiza itens de matrículas ativas
+    for m in ativos:
+        it = by_matricula.get(m.id)
+        nome_snap, doc_snap = _snapshots_from_matricula(m)
+        if it is None:
+            ItemPresenca.objects.create(
+                lista=lista,
+                #turma=lista.turma,
+                matricula=m,
+                cliente=m.cliente,
+                cliente_nome_snapshot=nome_snap,
+                cliente_doc_snapshot=doc_snap,
+                presente=False,
+            )
+        else:
+            # garante snapshots atualizados
+            changed = False
+            if it.cliente_nome_snapshot != nome_snap:
+                it.cliente_nome_snapshot = nome_snap
+                changed = True
+            if it.cliente_doc_snapshot != doc_snap:
+                it.cliente_doc_snapshot = doc_snap
+                changed = True
+            if changed:
+                it.save(update_fields=["cliente_nome_snapshot", "cliente_doc_snapshot"])
 
-        # ... mantém a lógica existente para criar o item da matrícula ...
-
-        
-
-
-    return {"adicionados": adicionados, "existentes": existentes}
+    # remove itens de matrículas que não estão mais ativas no dia
+    for it in existentes:
+        if it.matricula_id not in ativos_ids:
+            it.delete()
 
 
 # ===== Operações =====
 
 @transaction.atomic
-def salvar_presenca(
-    *,
-    lista_id: int,
-    presentes_ids: Optional[Iterable[int]],
-    obs_por_item: Optional[Dict[int, str]],
-    observacao_geral: str = "",
-) -> bool:
-    """
-    Salva marcações de presença e observações por item, além de observação geral.
-    """
-    lista = ListaPresenca.objects.filter(id=lista_id).first()
-    if not lista:
-        raise ObjectDoesNotExist("Lista não encontrada.")
-
-    presentes_set = set(int(x) for x in (presentes_ids or []))
-
-    itens = ItemPresenca.objects.filter(lista_id=lista_id)
-    for it in itens:
-        novo_valor = it.id in presentes_set
-        fields = []
-        if it.presente != novo_valor:
-            it.presente = novo_valor
-            fields.append("presente")
-        if obs_por_item and it.id in obs_por_item:
-            nova_obs = (obs_por_item[it.id] or "").strip()
-            if nova_obs != (it.observacao or ""):
-                it.observacao = nova_obs
-                fields.append("observacao")
-        if fields:
-            it.save(update_fields=fields + ["updated_at"])
-
-    if (observacao_geral or "") != (lista.observacao_geral or ""):
-        lista.observacao_geral = observacao_geral or ""
-        lista.save(update_fields=["observacao_geral", "updated_at"])
-
-    return True
+def salvar_presenca(*, lista_id: int, presentes_ids: list[int], obs_por_item: dict[int, str], observacao_geral: str | None, ocorrencia_aula: str | None = None):
+    lista = get_object_or_404(ListaPresenca, id=lista_id)
+    ids = set(presentes_ids or [])
+    for it in lista.itens.all():
+        novo_presente = it.id in ids
+        new_obs = (obs_por_item.get(it.id) or "").strip()
+        updates = []
+        if it.presente != novo_presente:
+            it.presente = novo_presente
+            updates.append("presente")
+        if it.observacao != new_obs:
+            it.observacao = new_obs
+            updates.append("observacao")
+        if updates:
+            it.save(update_fields=updates)
+    if observacao_geral is not None and observacao_geral != (lista.observacao_geral or ""):
+        lista.observacao_geral = observacao_geral
+        lista.save(update_fields=["observacao_geral"])
+    if ocorrencia_aula:
+        from .models import OcorrenciaAula
+        if lista.ocorrencia_aula != ocorrencia_aula and ocorrencia_aula in dict(OcorrenciaAula.choices):
+            lista.ocorrencia_aula = ocorrencia_aula
+            lista.save(update_fields=["ocorrencia_aula"])
 
 
 # ===== Geração automática =====

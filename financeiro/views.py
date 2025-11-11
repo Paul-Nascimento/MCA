@@ -10,7 +10,20 @@ from .models import Lancamento
 from .forms import LancamentoForm, FiltroFinanceiroForm, BaixaForm, RecorrenciaMensalForm
 from . import services as fs
 
+
+from django.contrib.auth.decorators import login_required, user_passes_test
+
+def is_diretor(user):
+    return user.groups.filter(name='Diretoria').exists() or user.is_superuser
+
+def is_professor(user):
+    return user.groups.filter(name='Professor').exists()
+
+def is_estagiario(user):
+    return user.groups.filter(name='Estagiario').exists()
+
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def list_financeiro(request: HttpRequest):
     f = FiltroFinanceiroForm(request.GET or None)
     cd = f.cleaned_data if f.is_valid() else {}
@@ -53,7 +66,9 @@ def list_financeiro(request: HttpRequest):
         "categoria_form": CategoriaFinanceiraForm(),  # 👈 novo
     })
 
+
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def create_lancamento(request: HttpRequest):
     if request.method != "POST": return HttpResponseBadRequest("Somente POST.")
     form = LancamentoForm(request.POST)
@@ -68,6 +83,7 @@ def create_lancamento(request: HttpRequest):
     return redirect(reverse("financeiro:list"))
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def update_lancamento(request: HttpRequest, pk: int):
     if request.method != "POST": return HttpResponseBadRequest("Somente POST.")
     form = LancamentoForm(request.POST)
@@ -82,6 +98,7 @@ def update_lancamento(request: HttpRequest, pk: int):
     return redirect(reverse("financeiro:list"))
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def cancelar_lancamento_view(request: HttpRequest, pk: int):
     if request.method != "POST": return HttpResponseBadRequest("Somente POST.")
     try:
@@ -92,6 +109,7 @@ def cancelar_lancamento_view(request: HttpRequest, pk: int):
     return redirect(reverse("financeiro:list"))
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def registrar_baixa_view(request: HttpRequest):
     if request.method != "POST": return HttpResponseBadRequest("Somente POST.")
     form = BaixaForm(request.POST)
@@ -113,6 +131,7 @@ def registrar_baixa_view(request: HttpRequest):
     return redirect(reverse("financeiro:list"))
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def estornar_baixa_view(request: HttpRequest, baixa_id: int):
     if request.method != "POST": return HttpResponseBadRequest("Somente POST.")
     try:
@@ -123,6 +142,7 @@ def estornar_baixa_view(request: HttpRequest, baixa_id: int):
     return redirect(reverse("financeiro:list"))
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def gerar_recorrencia_view(request: HttpRequest):
     if request.method != "POST": return HttpResponseBadRequest("Somente POST.")
     form = RecorrenciaMensalForm(request.POST)
@@ -154,6 +174,7 @@ def gerar_recorrencia_view(request: HttpRequest):
     return redirect(reverse("financeiro:list"))
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def exportar_financeiro_view(request: HttpRequest):
     # Reaproveita filtros
     f = FiltroFinanceiroForm(request.GET or None)
@@ -185,19 +206,17 @@ from . import services as fs
 
 # 👇 acrescente ao arquivo
 @login_required
+@user_passes_test(is_diretor, login_url="/turmas/")
 def gerar_mensalidades_view(request: HttpRequest):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")
 
-    comp = request.POST.get("competencia", "").strip()  # formato esperado: YYYY-MM (input type="month")
+    comp = request.POST.get("competencia", "").strip()
     dia_str = request.POST.get("dia_venc", "5").strip()
     turma_str = request.POST.get("turma", "").strip()
-
-    # defaults
     today = now().date()
     ano, mes = today.year, today.month
 
-    # parse competência
     try:
         if comp:
             parts = comp.split("-")
@@ -207,7 +226,7 @@ def gerar_mensalidades_view(request: HttpRequest):
             mes = int(parts[1])
         dia_venc = max(1, min(31, int(dia_str or "5")))
     except Exception:
-        messages.error(request, "Competência inválida. Use o formato AAAA-MM e um dia entre 1 e 31.")
+        messages.error(request, "Competência inválida. Use o formato AAAA-MM.")
         return redirect(reverse("financeiro:list"))
 
     try:
@@ -216,25 +235,27 @@ def gerar_mensalidades_view(request: HttpRequest):
                 turma_id=int(turma_str),
                 ano=ano, mes=mes, dia_venc=dia_venc,
             )
-            messages.success(
-                request,
-                f"Mensalidades da turma geradas: {rel['criados']} nova(s), {rel['existentes']} já existia(m). Vencimento: {rel['vencimento'] or '—'}."
-            )
+            messages.success(request, f"Mensalidades da turma geradas: {rel['criados']} nova(s), {rel['existentes']} já existia(m).")
         else:
             rel = fs.gerar_cobrancas_mensalidades_global(
                 ano=ano, mes=mes, dia_venc=dia_venc,
             )
-            messages.success(
-                request,
-                f"Mensalidades (todas as turmas): {rel['criados']} nova(s), {rel['existentes']} já existia(m)."
-            )
+            messages.success(request, f"Mensalidades (todas as turmas): {rel['criados']} nova(s), {rel['existentes']} já existia(m).")
+
+        # 👇 Gera automaticamente os pagamentos aos professores
+        from financeiro.services import gerar_pagamentos_professores
+        pag_rel = gerar_pagamentos_professores(ano, mes)
+        messages.success(request, f"Pagamentos a professores: {pag_rel['criados']} lançamento(s) criado(s).")
+
     except Exception as e:
-        messages.error(request, f"Falha ao gerar mensalidades: {e}")
+        messages.error(request, f"Falha ao gerar mensalidades/pagamentos: {e}")
 
     return redirect(reverse("financeiro:list"))
 
 
+
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def create_categoria_view(request: HttpRequest):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")

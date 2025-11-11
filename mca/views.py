@@ -8,6 +8,17 @@ from django.db.models.functions import Coalesce
 from financeiro.models import Lancamento
 from turmas.models import Turma, Matricula
 
+from django.contrib.auth.decorators import login_required, user_passes_test
+
+def is_diretor(user):
+    return user.groups.filter(name='Diretoria').exists() or user.is_superuser
+
+def is_professor(user):
+    return user.groups.filter(name='Professor').exists()
+
+def is_estagiario(user):
+    return user.groups.filter(name='Estagiario').exists()
+
 def _sum_saldo(qs):
     """
     Soma do saldo (valor - baixas) item a item, evitando overcount de JOIN.
@@ -31,6 +42,7 @@ def _detect_field(model, candidates):
     return None
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def home(request):
     # --- Financeiro: totais de saldo (exclui CANCELADO) ---
     base = Lancamento.objects.exclude(status="CANCELADO")

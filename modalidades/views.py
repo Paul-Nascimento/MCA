@@ -7,7 +7,20 @@ from django.urls import reverse
 from .forms import ModalidadeForm, ModalidadeFiltroForm
 from . import services as cs
 
-@login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
+
+def is_diretor(user):
+    return user.groups.filter(name='Diretoria').exists() or user.is_superuser
+
+def is_professor(user):
+    return user.groups.filter(name='Professor').exists()
+
+def is_estagiario(user):
+    return user.groups.filter(name='Estagiario').exists()
+
+
+@login_required(login_url='/turmas')
+@user_passes_test(is_diretor,login_url="/turmas/")
 def list_modalidades(request: HttpRequest):
     q = request.GET.get("q", "").strip()
     ativos_param = request.GET.get("ativos", "")
@@ -48,6 +61,7 @@ def list_modalidades(request: HttpRequest):
     })
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def create_modalidade(request: HttpRequest):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")
@@ -63,6 +77,7 @@ def create_modalidade(request: HttpRequest):
     return redirect(reverse("modalidades:list"))
 
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def update_modalidade(request: HttpRequest, pk: int):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")

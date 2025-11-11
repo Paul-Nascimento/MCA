@@ -10,8 +10,19 @@ from .models import Funcionario
 
 from django.core.paginator import Paginator
 
+from django.contrib.auth.decorators import login_required, user_passes_test
+
+def is_diretor(user):
+    return user.groups.filter(name='Diretoria').exists() or user.is_superuser
+
+def is_professor(user):
+    return user.groups.filter(name='Professor').exists()
+
+def is_estagiario(user):
+    return user.groups.filter(name='Estagiario').exists()
 
 @login_required
+@user_passes_test(is_diretor,login_url='/turmas/')
 def list_funcionarios(request):
     q = request.GET.get("q", "").strip()
     ativo = request.GET.get("ativo")
@@ -39,8 +50,8 @@ def list_funcionarios(request):
         "funcionario_form": FuncionarioForm()  # form no modal (vazio)
     })
 
-
 @login_required
+@user_passes_test(is_diretor,login_url='/turmas/')
 def create_funcionario(request: HttpRequest):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")
@@ -57,8 +68,8 @@ def create_funcionario(request: HttpRequest):
 
     return redirect(reverse("funcionarios:list"))
 
-
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def update_funcionario(request: HttpRequest, pk: int):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")
@@ -75,8 +86,8 @@ def update_funcionario(request: HttpRequest, pk: int):
 
     return redirect(reverse("funcionarios:list"))
 
-
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def exportar_funcionarios_view(request: HttpRequest):
     filename, content = cs.exportar_funcionarios_para_excel()
     resp = HttpResponse(
@@ -86,8 +97,8 @@ def exportar_funcionarios_view(request: HttpRequest):
     resp["Content-Disposition"] = f'attachment; filename=\"{filename}\"'
     return resp
 
-
 @login_required
+@user_passes_test(is_diretor,login_url="/turmas/")
 def importar_funcionarios_view(request: HttpRequest):
     if request.method != "POST":
         return HttpResponseBadRequest("Somente POST.")
